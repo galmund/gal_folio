@@ -1,0 +1,13 @@
+{
+  "name": "gal_folio",
+  "version": "1.0.0",
+  "description": "Personal stock portfolio tracker — live prices, gains/loss, local file storage.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

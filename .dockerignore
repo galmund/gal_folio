@@ -1,0 +1,6 @@
+# Never bake your private data or backups into the image
+data.json
+data.json.bak
+node_modules/
+.claude/
+*.md

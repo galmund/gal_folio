@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gal_folio",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 5178,
+      "env": { "NO_OPEN": "1" }
+    }
+  ]
+}

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gal_folio — my portfolio</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>" />
+  <!-- iPhone home-screen / PWA -->
+  <meta name="theme-color" content="#0e1116" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="gal_folio" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">📈</span> gal_folio</div>
+    <div class="topbar-actions">
+      <span id="lastUpdated" class="muted small"></span>
+      <button id="refreshBtn" class="btn ghost" title="Refresh prices">↻ Refresh</button>
+      <button id="settingsBtn" class="btn ghost icon" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="banner" class="banner hidden"></div>
+
+    <!-- Summary cards -->
+    <section class="summary">
+      <div class="card">
+        <div class="card-label">Total Value</div>
+        <div class="card-value" id="sumValue">—</div>
+        <div class="card-sub muted" id="sumValueIls"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Today</div>
+        <div class="card-value" id="sumDay">—</div>
+        <div class="card-sub" id="sumDayPct"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total Gain / Loss</div>
+        <div class="card-value" id="sumGain">—</div>
+        <div class="card-sub" id="sumGainPct"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Amount Invested</div>
+        <div class="card-value" id="sumCost">—</div>
+      </div>
+    </section>
+
+    <!-- USD -> ILS converter -->
+    <section class="fx-panel">
+      <div class="fx-rate" id="fxRate">USD → ILS · loading rate…</div>
+      <div class="fx-convert">
+        <div class="fx-field">
+          <span class="fx-cur">$</span>
+          <input id="usdInput" type="number" step="any" inputmode="decimal" placeholder="0.00" />
+          <span class="fx-code">USD</span>
+        </div>
+        <span class="fx-eq">=</span>
+        <div class="fx-field">
+          <span class="fx-cur">₪</span>
+          <input id="ilsInput" type="number" step="any" inputmode="decimal" placeholder="0.00" />
+          <span class="fx-code">ILS</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Add holding -->
+    <section class="add-panel">
+      <form id="addForm" autocomplete="off">
+        <div class="field symbol-field">
+          <label>Symbol</label>
+          <input id="symbolInput" type="text" placeholder="e.g. AAPL" spellcheck="false" />
+          <div id="searchResults" class="search-dropdown hidden"></div>
+        </div>
+        <div class="field">
+          <label>Shares</label>
+          <input id="sharesInput" type="number" step="any" min="0" placeholder="10" />
+        </div>
+        <div class="field">
+          <label>Avg cost / share</label>
+          <input id="costInput" type="number" step="any" min="0" placeholder="150.00" />
+        </div>
+        <button type="submit" class="btn primary" id="addBtn">+ Add holding</button>
+      </form>
+      <div id="addError" class="form-error hidden"></div>
+      <div id="addNote" class="form-note hidden"></div>
+    </section>
+
+    <!-- Holdings table -->
+    <section class="table-wrap">
+      <table id="holdingsTable">
+        <thead>
+          <tr>
+            <th class="left sortable" data-sort="symbol">Symbol<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="shares">Shares<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="cost">Avg Cost<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="price">Price<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="today">Today<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="todayGl">Today's G/L<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="value">Market Value<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="gain">Gain / Loss<span class="sort-ind"></span></th>
+            <th class="actions-col"></th>
+          </tr>
+        </thead>
+        <tbody id="holdingsBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty hidden">
+        <div class="empty-emoji">🗂️</div>
+        <p>No holdings yet. Add your first stock above to start tracking.</p>
+      </div>
+    </section>
+
+    <!-- Holdings breakdown -->
+    <section class="alloc-panel">
+      <div class="alloc-title">Holdings breakdown</div>
+      <div class="alloc-body">
+        <div class="alloc-donut">
+          <svg id="allocDonut" viewBox="0 0 240 240" width="240" height="240"></svg>
+        </div>
+        <div class="alloc-legend" id="allocLegend"></div>
+      </div>
+    </section>
+
+    <!-- Value over time -->
+    <section class="chart-panel">
+      <div class="chart-head">
+        <div class="chart-title">Portfolio value over time <span class="chart-note">total worth — includes money you add</span></div>
+        <div class="range-toggle" id="rangeToggle">
+          <button data-range="7">1W</button>
+          <button data-range="30">1M</button>
+          <button data-range="90">3M</button>
+          <button data-range="365">1Y</button>
+          <button data-range="all" class="active">All</button>
+        </div>
+      </div>
+      <div class="chart-body" id="chartBody"></div>
+    </section>
+
+    <!-- Gain / loss over time -->
+    <section class="chart-panel">
+      <div class="chart-head">
+        <div class="chart-title">Gain / loss over time <span class="chart-note">actual profit — excludes new buys</span></div>
+        <div class="range-toggle" id="gainRangeToggle">
+          <button data-range="7">1W</button>
+          <button data-range="30">1M</button>
+          <button data-range="90">3M</button>
+          <button data-range="365">1Y</button>
+          <button data-range="all" class="active">All</button>
+        </div>
+      </div>
+      <div class="chart-body" id="gainChartBody"></div>
+    </section>
+  </main>
+
+  <!-- Settings modal -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Settings</h2>
+        <button class="btn ghost icon" data-close-modal>✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="modal-label" for="apiKeyInput">Finnhub API key</label>
+        <input id="apiKeyInput" type="password" placeholder="Paste your free API key" spellcheck="false" />
+        <p class="hint">
+          Free key from
+          <a href="https://finnhub.io/register" target="_blank" rel="noreferrer">finnhub.io/register</a>
+          — sign up, copy the key from your dashboard, paste it here. It's stored only on your machine.
+        </p>
+
+        <label class="modal-label" for="currencyInput">Display currency</label>
+        <select id="currencyInput">
+          <option value="USD">USD ($)</option>
+          <option value="EUR">EUR (€)</option>
+          <option value="GBP">GBP (£)</option>
+          <option value="ILS">ILS (₪)</option>
+          <option value="CAD">CAD ($)</option>
+          <option value="AUD">AUD ($)</option>
+          <option value="JPY">JPY (¥)</option>
+        </select>
+        <p class="hint">Note: prices come back in each stock's native currency (usually USD for US listings). This just sets the symbol used for formatting.</p>
+
+        <label class="modal-label" for="usdIlsInput">USD → ILS rate</label>
+        <input id="usdIlsInput" type="number" step="any" min="0" placeholder="3.70" />
+        <p class="hint">Used for the shekel converter. The app tries to fetch a live rate automatically; if your network blocks it, this manual value is used. Update it whenever you like.</p>
+
+        <label class="modal-label">Backup &amp; restore</label>
+        <div class="io-row">
+          <a class="btn ghost" id="exportBtn" href="/api/export" download>⬇ Export data</a>
+          <button class="btn ghost" id="importBtn" type="button">⬆ Import data</button>
+          <input type="file" id="importFile" accept="application/json,.json" class="hidden" />
+        </div>
+        <p class="hint">Export saves everything (holdings, history, settings, and your API key) to one file. Import replaces the current data with a backup file — handy for moving to another machine or the cloud. The current data is backed up first.</p>
+      </div>
+      <div class="modal-foot">
+        <a class="btn danger-ghost hidden" id="logoutBtn" href="/logout">Log out</a>
+        <div class="spacer"></div>
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn primary" id="saveSettingsBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal-overlay hidden" id="editModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="editTitle">Edit holding</h2>
+        <button class="btn ghost icon" data-close-modal>✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editId" />
+        <label class="modal-label">Shares</label>
+        <input id="editShares" type="number" step="any" min="0" />
+        <label class="modal-label">Avg cost / share</label>
+        <input id="editCost" type="number" step="any" min="0" />
+      </div>
+      <div class="modal-foot">
+        <button class="btn danger-ghost" id="deleteHoldingBtn">Delete</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn primary" id="saveEditBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

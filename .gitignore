@@ -1,0 +1,4 @@
+# Your private data & API key live here — never commit it
+data.json
+data.json.bak
+node_modules/
