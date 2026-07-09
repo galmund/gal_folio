@@ -1,0 +1,17 @@
+# Render Blueprint — deploys gal_folio as a free Docker web service.
+# The env vars below are marked `sync: false`, so Render prompts you to enter
+# their values in the dashboard instead of storing secrets in this file.
+services:
+  - type: web
+    name: gal-folio
+    runtime: docker
+    plan: free
+    envVars:
+      - key: GAL_PASSWORD
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
