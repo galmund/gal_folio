@@ -22,6 +22,14 @@ const AUTH_ENABLED = !!PASSWORD;
 const SESSION_SECRET = process.env.GAL_SESSION_SECRET || PASSWORD || 'gal_folio_local';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // stay signed in for 30 days
 
+// Optional cloud storage via Upstash Redis (REST). When these are set, data is
+// stored there instead of a local file — needed on hosts with no persistent
+// disk (e.g. Render's free tier). Unset locally → plain file storage.
+const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const USE_UPSTASH = !!(UPSTASH_URL && UPSTASH_TOKEN);
+const UPSTASH_KEY = process.env.UPSTASH_KEY || 'gal_folio_data';
+
 const DEFAULT_DATA = {
   settings: { apiKey: '', provider: 'finnhub', currency: 'USD', usdIls: 3.7 },
   holdings: [],
@@ -30,22 +38,62 @@ const DEFAULT_DATA = {
 
 // ---------------------------------------------------------------- data store
 
+function normalize(d) {
+  return {
+    settings: { ...DEFAULT_DATA.settings, ...((d && d.settings) || {}) },
+    holdings: Array.isArray(d && d.holdings) ? d.holdings : [],
+    history: Array.isArray(d && d.history) ? d.history : [],
+  };
+}
+
+// Run one Redis command against Upstash's REST API (command as a JSON array).
+async function upstashCmd(cmd) {
+  const res = await fetch(UPSTASH_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(cmd),
+  });
+  if (!res.ok) throw new Error(`Upstash returned ${res.status}`);
+  return res.json(); // { result: ... } or { error: ... }
+}
+
 async function loadData() {
+  if (USE_UPSTASH) {
+    try {
+      const { result } = await upstashCmd(['GET', UPSTASH_KEY]);
+      return result ? normalize(JSON.parse(result)) : structuredClone(DEFAULT_DATA);
+    } catch (e) {
+      console.error('Upstash load failed:', e.message);
+      return structuredClone(DEFAULT_DATA);
+    }
+  }
   try {
-    const raw = await readFile(DATA_FILE, 'utf8');
-    const d = JSON.parse(raw);
-    return {
-      settings: { ...DEFAULT_DATA.settings, ...(d.settings || {}) },
-      holdings: Array.isArray(d.holdings) ? d.holdings : [],
-      history: Array.isArray(d.history) ? d.history : [],
-    };
+    return normalize(JSON.parse(await readFile(DATA_FILE, 'utf8')));
   } catch {
     return structuredClone(DEFAULT_DATA);
   }
 }
 
 async function saveData(data) {
+  if (USE_UPSTASH) {
+    await upstashCmd(['SET', UPSTASH_KEY, JSON.stringify(data)]);
+    return;
+  }
   await writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+// Save a backup of the current data before a destructive op (import). Storage-aware.
+async function backupCurrent() {
+  try {
+    if (USE_UPSTASH) {
+      const { result } = await upstashCmd(['GET', UPSTASH_KEY]);
+      if (result) await upstashCmd(['SET', UPSTASH_KEY + ':bak', result]);
+    } else {
+      await writeFile(DATA_FILE + '.bak', await readFile(DATA_FILE, 'utf8'), 'utf8');
+    }
+  } catch {
+    /* best effort — never block the operation on a failed backup */
+  }
 }
 
 // The Finnhub key can live in the saved settings or in an env var (handy on a
@@ -516,12 +564,7 @@ async function handleApi(req, res, url, pathname, method) {
       : [];
     const settings = { ...DEFAULT_DATA.settings, ...(body.settings && typeof body.settings === 'object' ? body.settings : {}) };
 
-    try {
-      const current = await readFile(DATA_FILE, 'utf8');
-      await writeFile(DATA_FILE + '.bak', current, 'utf8'); // best-effort safety backup
-    } catch {
-      /* no existing file to back up */
-    }
+    await backupCurrent(); // safety backup (file .bak or Upstash :bak key)
     await saveData({ settings, holdings, history });
     quoteCache.clear();
     return sendJson(res, 200, { ok: true, holdings: holdings.length, history: history.length });

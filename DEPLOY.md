@@ -26,14 +26,49 @@ it stays up even when your PC is off. You do this once, from a normal network
 | Variable | Required | What it does |
 |---|---|---|
 | `GAL_PASSWORD` | **yes** | The login password for the app. Pick a strong one. |
-| `DATA_FILE` | yes | Where data is stored. Use `/data/data.json` (on your volume). The Dockerfile sets this. |
+| `UPSTASH_REDIS_REST_URL` | for Render | Upstash database URL. Enables cloud storage (needed on hosts with no persistent disk). |
+| `UPSTASH_REDIS_REST_TOKEN` | for Render | Upstash database token (pairs with the URL above). |
+| `DATA_FILE` | for disk hosts | File path for storage on hosts WITH a persistent disk (Fly/Railway). Use `/data/data.json`. Ignored when Upstash is set. |
 | `FINNHUB_API_KEY` | optional | Your Finnhub key. If you skip it, just set the key in‑app under ⚙ Settings after logging in. |
 | `PORT` | auto | The host sets this for you. Don't hardcode it. |
 | `GAL_SESSION_SECRET` | optional | Extra secret for signing login cookies. Defaults to your password. |
 
+> **Storage:** the app uses a local file by default. If `UPSTASH_REDIS_REST_URL`
+> + `UPSTASH_REDIS_REST_TOKEN` are set, it stores everything in Upstash instead —
+> that's how it keeps your data on hosts (like Render's free tier) that reset
+> their disk. Set **either** Upstash **or** a `DATA_FILE` on a volume, not both.
+
 ---
 
-## Option A — Railway (easiest, ~$5/month)
+## Option A — Render + Upstash ⭐ (free, no credit card)
+
+Render's free web service sleeps after 15 min (a ~30–60s wake‑up delay) and has
+no persistent disk — so we keep your data in **Upstash** (a free Redis database,
+no card needed). Both are free.
+
+**1. Create the free database (Upstash):**
+- Sign up at **upstash.com** → **Create Database** (Redis) → pick a region near you.
+- On the database page, open the **REST API** section and copy two values:
+  **`UPSTASH_REDIS_REST_URL`** and **`UPSTASH_REDIS_REST_TOKEN`**.
+
+**2. Deploy the app (Render):**
+- Sign up at **render.com** → **New** → **Web Service** → connect your GitHub and
+  pick the `gal_folio` repo.
+- Render auto‑detects the `Dockerfile`. For **Instance Type** choose **Free**.
+- Under **Environment**, add these variables:
+  - `GAL_PASSWORD` = your password
+  - `UPSTASH_REDIS_REST_URL` = (from step 1)
+  - `UPSTASH_REDIS_REST_TOKEN` = (from step 1)
+  - `FINNHUB_API_KEY` = your Finnhub key (optional — or set it in‑app later)
+- Click **Create Web Service**. When it's live, Render gives you a public URL.
+
+**3. Log in on your iPhone** (see "Put it on your iPhone home screen" below) and
+**Import** your exported backup — done, and your data now survives every sleep.
+
+> Note: the free instance sleeps when idle, so the first open after a while takes
+> ~30–60 seconds to wake. After that it's snappy.
+
+## Option B — Railway (easiest, ~$5/month)
 
 1. Push the code to GitHub (above).
 2. Sign up at **railway.app** → **New Project** → **Deploy from GitHub repo** →
@@ -46,7 +81,7 @@ it stays up even when your PC is off. You do this once, from a normal network
 6. Visit the URL, log in, and set your API key in ⚙ Settings if you didn't add it
    as a variable.
 
-## Option B — Fly.io (has a small free allowance)
+## Option C — Fly.io (persistent volume, needs a card on file)
 
 1. Install the CLI: **flyctl** (fly.io/docs/hands-on/install-flyctl).
 2. In this folder: `fly launch` — accept the Dockerfile, **don't** deploy yet.
