@@ -216,12 +216,17 @@ function buildCnbcQuote(r) {
   const regular = parseNum(r.last); // during PRE/POST this is the last regular close
   const prevDay = parseNum(r.previous_day_closing);
   const ext = r.ExtendedMktQuote || null;
-  const extPrice = ext ? parseNum(ext.last) : null;
 
-  // The extended block's own label beats the symbol-level status, which can go
-  // stale on non-US listings.
-  const state = mapState((ext && ext.type) || r.curmktstatus);
+  // `curmktstatus` is the authority on which session we're in. The extended
+  // block is NOT: CNBC leaves the pre-market print in place, frozen at 9:30am,
+  // for the whole regular session (and likewise after the close). Trusting it
+  // would price a live stock off a stale morning quote and, worse, measure the
+  // day's change against today's own price. So only use the extended print
+  // when the symbol's own status agrees we're actually in that session.
+  const state = mapState(r.curmktstatus);
   const isPre = state === 'PRE';
+  const useExt = !!ext && (isPre || state === 'POST') && mapState(ext.type) === state;
+  const extPrice = useExt ? parseNum(ext.last) : null;
 
   // Before the open, today's move is measured from yesterday's close — which is
   // exactly what `last` still holds. Once the session starts, `last` becomes
@@ -249,9 +254,9 @@ function buildCnbcQuote(r) {
     regularChange: round4(regularChange),
     regularChangePercent: round4(prevClose ? (regularChange / prevClose) * 100 : 0),
     extPrice: round4(extPrice),
-    extChange: ext ? parseNum(ext.change) : null,
-    extChangePercent: ext ? parseNum(ext.change_pct) : null,
-    extTime: ext ? ext.last_timedate || null : null,
+    extChange: useExt ? parseNum(ext.change) : null,
+    extChangePercent: useExt ? parseNum(ext.change_pct) : null,
+    extTime: useExt ? ext.last_timedate || null : null,
     currency: r.currencyCode || null,
     source: 'cnbc',
   };
