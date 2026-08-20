@@ -29,7 +29,7 @@ it stays up even when your PC is off. You do this once, from a normal network
 | `UPSTASH_REDIS_REST_URL` | for Render | Upstash database URL. Enables cloud storage (needed on hosts with no persistent disk). |
 | `UPSTASH_REDIS_REST_TOKEN` | for Render | Upstash database token (pairs with the URL above). |
 | `DATA_FILE` | for disk hosts | File path for storage on hosts WITH a persistent disk (Fly/Railway). Use `/data/data.json`. Ignored when Upstash is set. |
-| `FINNHUB_API_KEY` | optional | Your Finnhub key. If you skip it, just set the key in‑app under ⚙ Settings after logging in. |
+| `FINNHUB_API_KEY` | optional | Only for ticker search and company names — prices (incl. pre‑market / after hours) need no key. Can also be set in‑app under ⚙ Settings. |
 | `PORT` | auto | The host sets this for you. Don't hardcode it. |
 | `GAL_SESSION_SECRET` | optional | Extra secret for signing login cookies. Defaults to your password. |
 

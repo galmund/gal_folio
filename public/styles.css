@@ -471,3 +471,54 @@ td.left { text-align: left; }
   thead th.hide-sm, tbody td.hide-sm { display: none; }
   main { padding: 16px; }
 }
+
+/* --------------------------------------------- market session indicator */
+/* Shows which session the prices came from: pre-market, open, after hours
+   or closed. The dot picks up the session colour, the text stays quiet. */
+.mkt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.mkt-badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.mkt-badge.open::before { background: var(--green); box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.18); }
+.mkt-badge.ext::before  { background: #d29922; box-shadow: 0 0 0 3px rgba(210, 153, 34, 0.18); }
+.mkt-badge.open { color: var(--green); }
+.mkt-badge.ext  { color: #d29922; }
+
+/* A price we couldn't refresh this round — shown, but visibly less certain. */
+.stale { opacity: 0.65; }
+
+/* Sub-line under a price that came from an extended-hours print. */
+.ext-line {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 2px;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+/* The badge is one item too many for a narrow top bar, so let it wrap onto a
+   second row rather than squeezing the timestamp and buttons. */
+@media (max-width: 620px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; padding: 10px 16px; }
+  .topbar-actions { width: 100%; justify-content: space-between; gap: 8px; }
+  .topbar-actions .btn { white-space: nowrap; }
+  .mkt-badge { padding: 3px 8px; font-size: 11px; }
+  #lastUpdated { font-size: 11px; }
+}

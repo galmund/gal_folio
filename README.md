@@ -17,9 +17,22 @@ To stop it, press `Ctrl+C` in the terminal.
 
 > Tip: double-click **start.bat** to launch without opening a terminal yourself.
 
-## One-time setup: your free price key
+## Prices, including pre-market and after hours
 
-Live prices come from [Finnhub](https://finnhub.io) (free tier = 60 requests/min).
+Prices work out of the box — no signup, no API key. They come from CNBC's public
+quote service, which reports the **pre-market** and **after-hours** print
+alongside the regular session, so your portfolio keeps moving outside 9:30–16:00 ET.
+
+The top bar shows which session you're looking at — *Pre-market*, *Market open*,
+*After hours* or *Market closed* — and any row priced off an extended-hours trade
+gets a small `Pre` / `Aft` line under the price showing how far it has moved since
+the regular close.
+
+### Optional: a free Finnhub key
+
+A [Finnhub](https://finnhub.io) key is only needed for **ticker search and company
+names** in the add-holding box, plus as a price fallback for anything the main
+source doesn't recognise.
 
 1. Sign up at **https://finnhub.io/register** (takes ~1 minute).
 2. Copy your API key from the Finnhub dashboard.
@@ -33,7 +46,9 @@ Finnhub by your local server — it never goes anywhere else.
 - **Add a holding** — type a ticker (e.g. `AAPL`); pick from the search
   suggestions, enter your shares and average cost per share, then **Add**.
 - **Edit / delete** — click the ✎ on any row.
-- **Refresh** — prices auto-refresh every 60 seconds; the ↻ button forces it.
+- **Refresh** — prices auto-refresh every 60 seconds through pre-market, regular
+  hours and after hours; once the market is fully closed it eases off to every 5
+  minutes. Re-opening the app refreshes immediately, and ↻ forces it any time.
 
 The summary cards show your total value, today's move, total gain/loss, and how
 much you've invested.
@@ -55,5 +70,6 @@ password‑free local use.
 - Prices are returned in each stock's native currency (usually USD for US
   listings). The currency setting only changes the symbol used for formatting,
   it does not convert between currencies.
-- Free Finnhub covers US stocks and many global tickers. Some exchanges need a
-  paid plan; if a symbol shows `error`, it may not be on the free tier.
+- Extended-hours prints exist for US-listed stocks and ETFs. Other listings still
+  price fine, they just show the regular close outside their own trading hours.
+- If a symbol shows `error`, neither price source recognised it — check the ticker.

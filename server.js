@@ -1,7 +1,9 @@
 // gal_folio — personal stock portfolio tracker
 // A tiny zero-dependency Node server: serves the web UI, stores holdings in
-// data.json on disk, and proxies live price lookups to Finnhub (so your API
-// key never leaves your machine and there are no browser CORS headaches).
+// data.json on disk, and proxies live price lookups (so your API key never
+// leaves your machine and there are no browser CORS headaches). Prices come
+// from CNBC's key-less quote service, which covers pre-market and after-hours
+// trading; Finnhub is the fallback and powers ticker search.
 
 import http from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -148,24 +150,167 @@ function recordSnapshot(data, quotes) {
 // -------------------------------------------------------------- price source
 
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
+const round4 = (n) => (n == null ? null : Math.round(n * 10000) / 10000);
+
+// CNBC hands numbers back as display strings — "316.83", "226,030.00", "+6.80",
+// "+2.19%", and sometimes "" or "N/A". Strip the decoration; null means "no
+// value" (distinct from a genuine zero).
+function parseNum(v) {
+  if (v == null) return null;
+  const s = String(v).replace(/[,$%\s]/g, '').replace(/^\+/, '');
+  if (!s || s === 'N/A' || s === '--') return null;
+  const n = Number(s);
+  return isFinite(n) ? n : null;
+}
+
+// 'PRE' | 'REGULAR' | 'POST' | 'CLOSED'
+function mapState(s) {
+  const t = String(s || '').toUpperCase();
+  if (t.includes('PRE')) return 'PRE';
+  if (t.includes('POST') || t.includes('AFTER')) return 'POST';
+  if (t.includes('REG') || t.includes('OPEN')) return 'REGULAR';
+  return 'CLOSED';
+}
+
+// Where the US market clock stands right now, straight from Eastern time.
+// Only a fallback: the feed's own status is preferred because it knows about
+// market holidays and this does not.
+function clockState() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (t) => (parts.find((p) => p.type === t) || {}).value;
+  const day = get('weekday');
+  if (day === 'Sat' || day === 'Sun') return 'CLOSED';
+  const mins = (Number(get('hour')) % 24) * 60 + Number(get('minute'));
+  if (mins >= 4 * 60 && mins < 9 * 60 + 30) return 'PRE'; // 04:00–09:30 ET
+  if (mins >= 9 * 60 + 30 && mins < 16 * 60) return 'REGULAR'; // 09:30–16:00 ET
+  if (mins >= 16 * 60 && mins < 20 * 60) return 'POST'; // 16:00–20:00 ET
+  return 'CLOSED';
+}
+
+const MARKET_LABEL = {
+  PRE: 'Pre-market',
+  REGULAR: 'Market open',
+  POST: 'After hours',
+  CLOSED: 'Market closed',
+};
 
 const quoteCache = new Map(); // SYMBOL -> { ts, data }
 const QUOTE_TTL = 30_000; // 30s — avoids hammering the API on refreshes
 
-async function getQuote(symbol, apiKey) {
-  const key = symbol.toUpperCase();
-  const cached = quoteCache.get(key);
-  const now = Date.now();
-  if (cached && now - cached.ts < QUOTE_TTL) return cached.data;
+// ---- primary source: CNBC (key-less, batched, covers extended hours) -------
+// Finnhub's free /quote only moves during the regular session, so pre-market
+// and after-hours prices come from CNBC's public quote service instead. It
+// takes the whole portfolio in one request and reports the extended-hours
+// print next to the regular one.
+const CNBC_ENDPOINT = 'https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol';
+const CNBC_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+function buildCnbcQuote(r) {
+  const regular = parseNum(r.last); // during PRE/POST this is the last regular close
+  const prevDay = parseNum(r.previous_day_closing);
+  const ext = r.ExtendedMktQuote || null;
+  const extPrice = ext ? parseNum(ext.last) : null;
+
+  // The extended block's own label beats the symbol-level status, which can go
+  // stale on non-US listings.
+  const state = mapState((ext && ext.type) || r.curmktstatus);
+  const isPre = state === 'PRE';
+
+  // Before the open, today's move is measured from yesterday's close — which is
+  // exactly what `last` still holds. Once the session starts, `last` becomes
+  // today's price and the baseline shifts to previous_day_closing.
+  const prevClose = isPre ? regular : prevDay != null ? prevDay : regular;
+
+  const price = extPrice != null && extPrice > 0 ? extPrice : regular;
+  if (!(price > 0)) return null;
+
+  const change = prevClose != null ? price - prevClose : 0;
+  const regularChange = isPre || prevClose == null || regular == null ? 0 : regular - prevClose;
+
+  return {
+    // Same shape the app has always consumed — `price` is simply live now.
+    price: round4(price),
+    change: round4(change),
+    changePercent: round4(prevClose ? (change / prevClose) * 100 : 0),
+    prevClose: round4(prevClose != null ? prevClose : 0),
+    high: parseNum(r.high) || 0,
+    low: parseNum(r.low) || 0,
+    open: parseNum(r.open) || 0,
+    // Extended-hours detail, so the UI can label where the price came from.
+    marketState: state,
+    regularPrice: round4(regular != null ? regular : 0),
+    regularChange: round4(regularChange),
+    regularChangePercent: round4(prevClose ? (regularChange / prevClose) * 100 : 0),
+    extPrice: round4(extPrice),
+    extChange: ext ? parseNum(ext.change) : null,
+    extChangePercent: ext ? parseNum(ext.change_pct) : null,
+    extTime: ext ? ext.last_timedate || null : null,
+    currency: r.currencyCode || null,
+    source: 'cnbc',
+  };
+}
+
+async function fetchCnbcQuotes(symbols) {
+  if (!symbols.length) return {};
+  const url =
+    `${CNBC_ENDPOINT}?symbols=${symbols.map(encodeURIComponent).join('%7C')}` +
+    '&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1';
+
+  // One retry: a single dropped request shouldn't blank out the whole
+  // portfolio when we're polling every minute.
+  let res;
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      res = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': CNBC_UA, Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Extended-hours service returned ${res.status}`);
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      res = null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (lastErr) throw lastErr;
+  const j = await res.json();
+  const rows = [].concat((j && j.FormattedQuoteResult && j.FormattedQuoteResult.FormattedQuote) || []);
+
+  const out = {};
+  for (const r of rows) {
+    if (!r || r.code !== 0 || !r.symbol) continue; // code 1 = symbol not recognised
+    const q = buildCnbcQuote(r);
+    if (q) out[String(r.symbol).toUpperCase()] = q;
+  }
+  return out;
+}
+
+// ---- fallback source: Finnhub (regular session only) -----------------------
+
+async function getFinnhubQuote(symbol, apiKey) {
+  const key = symbol.toUpperCase();
   const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(key)}&token=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url);
   if (res.status === 401 || res.status === 403) throw new Error('Invalid API key');
   if (res.status === 429) throw new Error('Rate limit reached — try again shortly');
   if (!res.ok) throw new Error(`Price service returned ${res.status}`);
   const j = await res.json();
+  if (!(num(j.c) > 0)) throw new Error('No price available for this symbol');
 
-  const data = {
+  return {
     price: num(j.c),
     change: num(j.d),
     changePercent: num(j.dp),
@@ -173,9 +318,97 @@ async function getQuote(symbol, apiKey) {
     high: num(j.h),
     low: num(j.l),
     open: num(j.o),
+    marketState: null, // Finnhub doesn't say, and it never moves out of hours
+    regularPrice: num(j.c),
+    regularChange: num(j.d),
+    regularChangePercent: num(j.dp),
+    extPrice: null,
+    extChange: null,
+    extChangePercent: null,
+    extTime: null,
+    currency: null,
+    source: 'finnhub',
   };
-  quoteCache.set(key, { ts: now, data });
-  return data;
+}
+
+// ---- the one entry point the routes use ------------------------------------
+
+// Quote a batch of symbols: cache first, then one CNBC call for whatever's
+// stale, then Finnhub one-by-one for anything CNBC didn't recognise.
+async function getQuotes(symbols, apiKey) {
+  const now = Date.now();
+  const quotes = {};
+  const errors = {};
+  const stale = [];
+
+  for (const s of symbols) {
+    const key = String(s).toUpperCase();
+    if (quotes[key] || stale.includes(key)) continue; // de-dupe
+    const cached = quoteCache.get(key);
+    if (cached && now - cached.ts < QUOTE_TTL) quotes[key] = cached.data;
+    else stale.push(key);
+  }
+  if (!stale.length) return { quotes, errors };
+
+  let fresh = {};
+  try {
+    fresh = await fetchCnbcQuotes(stale);
+  } catch (e) {
+    console.error('Extended-hours quotes unavailable:', e.message);
+  }
+  for (const [k, v] of Object.entries(fresh)) {
+    quoteCache.set(k, { ts: now, data: v });
+    quotes[k] = v;
+  }
+
+  const missing = stale.filter((s) => !quotes[s]);
+  if (!missing.length) return { quotes, errors };
+
+  if (!apiKey) {
+    for (const s of missing) errors[s] = 'No price available';
+    fillFromStaleCache(quotes, errors);
+    return { quotes, errors };
+  }
+  await Promise.all(
+    missing.map(async (s) => {
+      try {
+        const q = await getFinnhubQuote(s, apiKey);
+        quoteCache.set(s, { ts: now, data: q });
+        quotes[s] = q;
+      } catch (e) {
+        errors[s] = e.message;
+      }
+    })
+  );
+  fillFromStaleCache(quotes, errors);
+  return { quotes, errors };
+}
+
+// Last resort: if a symbol couldn't be priced this round but we quoted it
+// successfully earlier, show that price rather than an error. A slightly old
+// number beats a blank row when the upstream feed blips.
+function fillFromStaleCache(quotes, errors) {
+  for (const s of Object.keys(errors)) {
+    const cached = quoteCache.get(s);
+    if (cached && cached.data) {
+      quotes[s] = { ...cached.data, stale: true, asOf: cached.ts };
+      delete errors[s];
+    }
+  }
+}
+
+// Which session the UI badge should show. Trust the feed (it knows holidays)
+// using the USD-quoted symbols, and fall back to the Eastern-time clock.
+function marketStatus(quotes) {
+  const tally = {};
+  for (const q of Object.values(quotes)) {
+    if (q && q.marketState && q.currency === 'USD') {
+      tally[q.marketState] = (tally[q.marketState] || 0) + 1;
+    }
+  }
+  const best = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+  const state = best ? best[0] : clockState();
+  return { state, label: MARKET_LABEL[state] || MARKET_LABEL.CLOSED };
 }
 
 async function getName(symbol, apiKey) {
@@ -396,25 +629,19 @@ async function handleApi(req, res, url, pathname, method) {
   if (method === 'GET' && pathname === '/api/portfolio') {
     const data = await loadData();
     const apiKey = effectiveKey(data);
-    const quotes = {};
-    const errors = {};
-    if (apiKey) {
-      await Promise.all(
-        data.holdings.map(async (h) => {
-          try {
-            quotes[h.symbol] = await getQuote(h.symbol, apiKey);
-          } catch (e) {
-            errors[h.symbol] = e.message;
-          }
-        })
-      );
-      if (recordSnapshot(data, quotes)) await saveData(data);
-    }
+    // Prices no longer need the Finnhub key — the extended-hours source is
+    // key-less — so quote every holding regardless of whether one is set.
+    const { quotes, errors } = await getQuotes(
+      data.holdings.map((h) => h.symbol),
+      apiKey
+    );
+    if (recordSnapshot(data, quotes)) await saveData(data);
     return sendJson(res, 200, {
       holdings: data.holdings,
       quotes,
       errors,
       history: data.history,
+      market: marketStatus(quotes),
       settings: {
         hasApiKey: !!apiKey,
         provider: data.settings.provider,
@@ -496,13 +723,10 @@ async function handleApi(req, res, url, pathname, method) {
     const symbol = url.searchParams.get('symbol');
     if (!symbol) return sendJson(res, 400, { error: 'Missing symbol' });
     const data = await loadData();
-    const apiKey = effectiveKey(data);
-    if (!apiKey) return sendJson(res, 400, { error: 'No API key set' });
-    try {
-      return sendJson(res, 200, await getQuote(symbol, apiKey));
-    } catch (e) {
-      return sendJson(res, 502, { error: e.message });
-    }
+    const { quotes, errors } = await getQuotes([symbol], effectiveKey(data));
+    const key = String(symbol).toUpperCase();
+    if (quotes[key]) return sendJson(res, 200, quotes[key]);
+    return sendJson(res, 502, { error: errors[key] || 'No price available' });
   }
 
   // Symbol search (autocomplete in the add form)

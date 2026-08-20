@@ -5,6 +5,7 @@ const state = {
   quotes: {},
   errors: {},
   history: [],
+  market: null, // { state: 'PRE'|'REGULAR'|'POST'|'CLOSED', label }
   currency: 'USD',
   hasApiKey: false,
   fxRate: null,
@@ -176,7 +177,27 @@ function renderRow(h) {
   const tr = document.createElement('tr');
   const err = state.errors[h.symbol];
 
-  const priceCell = r.price != null ? money(r.price)
+  // In pre/post the price IS the extended-hours print, so say so — and show
+  // how far it has moved since the regular close.
+  const ext = r.q && r.q.extPrice != null && (r.q.marketState === 'PRE' || r.q.marketState === 'POST')
+    ? `<span class="ext-line ${signClass(r.q.extChange)}" title="${escapeHtml(
+        (r.q.marketState === 'PRE' ? 'Pre-market' : 'After hours') +
+          ' price' + (r.q.extTime ? ' at ' + r.q.extTime : '') +
+          ' — regular close ' + money(r.q.regularPrice)
+      )}">${r.q.marketState === 'PRE' ? 'Pre' : 'Aft'} ${pct(r.q.extChangePercent)}</span>`
+    : '';
+
+  // A stale price means the feed didn't answer this round and we're showing the
+  // last one we got — worth saying, quietly.
+  const staleTip = r.q && r.q.stale
+    ? ` class="stale" title="${escapeHtml(
+        'Last known price' +
+          (r.q.asOf ? ' from ' + new Date(r.q.asOf).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '') +
+          " — the price feed didn't respond just now"
+      )}"`
+    : '';
+
+  const priceCell = r.price != null ? `<span${staleTip}>${money(r.price)}</span>` + ext
     : err ? `<span class="quote-missing" title="${escapeHtml(err)}">error</span>`
     : `<span class="quote-missing">—</span>`;
 
@@ -216,7 +237,8 @@ function renderBanner() {
   const banner = document.getElementById('banner');
   if (!state.hasApiKey) {
     banner.innerHTML =
-      '⚠️ No price API key set yet — live prices are off. Click ⚙ Settings to add your free Finnhub key.';
+      'ℹ️ Live prices (including pre-market and after hours) work without a key. ' +
+      'Add a free Finnhub key in ⚙ Settings to enable ticker search when adding holdings.';
     banner.classList.remove('hidden');
   } else {
     banner.classList.add('hidden');
@@ -250,6 +272,7 @@ async function loadPortfolio() {
     state.quotes = data.quotes || {};
     state.errors = data.errors || {};
     state.history = data.history || [];
+    state.market = data.market || null;
     state.currency = data.settings.currency || 'USD';
     state.hasApiKey = data.settings.hasApiKey;
     document.getElementById('logoutBtn').classList.toggle('hidden', !data.settings.authEnabled);
@@ -260,6 +283,7 @@ async function loadPortfolio() {
       state.fxSource = 'manual';
     }
     render();
+    renderMarketState();
     stampUpdated();
   } catch (e) {
     document.getElementById('banner').textContent = 'Could not reach the server: ' + e.message;
@@ -268,6 +292,22 @@ async function loadPortfolio() {
     btn.classList.remove('spinning');
     btn.textContent = '↻ Refresh';
   }
+}
+
+// Badge in the top bar naming the session the prices came from.
+function renderMarketState() {
+  const el = document.getElementById('marketState');
+  if (!el) return;
+  const m = state.market;
+  if (!m || !m.state) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.textContent = m.label || '';
+  el.className =
+    'mkt-badge ' +
+    (m.state === 'REGULAR' ? 'open' : m.state === 'PRE' || m.state === 'POST' ? 'ext' : '');
+  el.classList.remove('hidden');
 }
 
 function stampUpdated() {
@@ -502,7 +542,9 @@ document.querySelectorAll('.modal-overlay').forEach((overlay) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
 
-document.getElementById('refreshBtn').addEventListener('click', loadPortfolio);
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  loadPortfolio().then(scheduleRefresh); // manual refresh restarts the clock
+});
 
 // ------------------------------------------------------------- allocation donut
 
@@ -1093,6 +1135,29 @@ ilsInput.addEventListener('input', syncFromIls);
 
 loadPortfolio();
 loadFxRate();
-// Auto-refresh prices every 60s; refresh the FX rate hourly
-setInterval(loadPortfolio, 60_000);
+// Auto-refresh prices. Pre-market, regular hours and after hours all move, so
+// poll every 60s through all three; once the market is fully shut there's
+// nothing new to fetch, so back off to 5 minutes.
+function refreshDelay() {
+  const st = state.market && state.market.state;
+  return st === 'CLOSED' ? 5 * 60_000 : 60_000;
+}
+
+let refreshTimer = null;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => {
+    await loadPortfolio();
+    scheduleRefresh(); // re-read the state each time — sessions change under us
+  }, refreshDelay());
+}
+scheduleRefresh();
+
+// Phones freeze timers in a backgrounded tab, so a re-opened home-screen app
+// would otherwise show whatever the price was when you last looked. Re-fetch
+// the moment it comes back to the foreground.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadPortfolio().then(scheduleRefresh);
+});
+
 setInterval(loadFxRate, 60 * 60 * 1000);
