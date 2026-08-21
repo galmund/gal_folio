@@ -522,3 +522,40 @@ td.left { text-align: left; }
   .mkt-badge { padding: 3px 8px; font-size: 11px; }
   #lastUpdated { font-size: 11px; }
 }
+
+/* --------------------------------------------------- sell / realised gains */
+.modal-hint { color: var(--text-dim); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* Live read-out of what a sale works out to, above the confirm button. */
+.sell-preview {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+  min-height: 44px;
+}
+.sell-preview .row { display: flex; justify-content: space-between; gap: 12px; }
+.sell-preview .row + .row { margin-top: 6px; }
+.sell-preview b { color: var(--text); font-weight: 600; }
+
+.realized-sub { font-weight: 600; }
+
+.sales-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 0;
+}
+.sales-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.sales-total { font-size: 13px; font-weight: 700; }
+#salesTable tbody tr { opacity: 0.85; }

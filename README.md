@@ -45,7 +45,15 @@ Finnhub by your local server — it never goes anywhere else.
 
 - **Add a holding** — type a ticker (e.g. `AAPL`); pick from the search
   suggestions, enter your shares and average cost per share, then **Add**.
-- **Edit / delete** — click the ✎ on any row.
+- **Edit / delete** — click the ✎ on any row. *Delete* is for fixing a row you
+  shouldn't have added; it leaves no trace.
+- **Sell** — ✎ then **Sell…**. Enter the shares and the price you sold at (both
+  prefilled with your whole position at the current price) and it shows the
+  proceeds and realised gain before you commit. Selling reduces the position at
+  its average cost, and closing it out removes the row but keeps the sale.
+  Everything sold is listed under **Sold**, with the running realised total
+  shown under *Total Gain / Loss*. Realised profit is also folded into the
+  profit/loss chart, so taking money off the table doesn't look like a loss.
 - **Refresh** — prices auto-refresh every 60 seconds through pre-market, regular
   hours and after hours; once the market is fully closed it eases off to every 5
   minutes. Re-opening the app refreshes immediately, and ↻ forces it any time.
@@ -55,8 +63,8 @@ much you've invested.
 
 ## Your data
 
-Everything lives in **`data.json`** in this folder — your holdings, settings,
-and API key. Back it up by copying that one file. Deleting it resets the app.
+Everything lives in **`data.json`** in this folder — your holdings, sales,
+settings, and API key. Back it up by copying that one file. Deleting it resets the app.
 
 ## Use it on your phone / in the cloud
 

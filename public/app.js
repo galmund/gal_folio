@@ -5,6 +5,8 @@ const state = {
   quotes: {},
   errors: {},
   history: [],
+  realized: [], // completed sales
+  realizedTotal: 0,
   market: null, // { state: 'PRE'|'REGULAR'|'POST'|'CLOSED', label }
   currency: 'USD',
   hasApiKey: false,
@@ -158,9 +160,18 @@ function render() {
   setCard('sumGain', t.gain == null ? '—' : money(t.gain, { sign: true }), signClass(t.gain));
   document.getElementById('sumGainPct').textContent = pct(t.gainPct);
   document.getElementById('sumGainPct').className = 'card-sub ' + signClass(t.gain);
+  // Realised profit lives on its own line: it's money already banked, so
+  // folding it into the unrealised figure (and its %) would muddle both.
+  const realizedEl = document.getElementById('sumRealized');
+  if (realizedEl) {
+    const r = state.realizedTotal || 0;
+    realizedEl.textContent = r ? money(r, { sign: true }) + ' realised' : '';
+    realizedEl.className = 'card-sub realized-sub ' + signClass(r) + (r ? '' : ' hidden');
+  }
   setCard('sumCost', money(t.costAll), '');
 
   renderBanner();
+  renderSales();
   renderAllocation();
   renderChart();
   renderGainChart();
@@ -233,6 +244,49 @@ function renderRow(h) {
   return tr;
 }
 
+// Table of completed sales. Hidden entirely until there's something in it.
+function renderSales() {
+  const section = document.getElementById('salesSection');
+  const body = document.getElementById('salesBody');
+  if (!section || !body) return;
+
+  const sales = state.realized || [];
+  section.classList.toggle('hidden', sales.length === 0);
+  if (!sales.length) {
+    body.innerHTML = '';
+    return;
+  }
+
+  const total = document.getElementById('salesTotal');
+  const r = state.realizedTotal || 0;
+  total.textContent = money(r, { sign: true }) + ' realised';
+  total.className = 'sales-total ' + signClass(r);
+
+  body.innerHTML = '';
+  // Newest first — the most recent sale is the one you want to see.
+  for (const sale of [...sales].reverse()) {
+    const gainPctVal = sale.cost > 0 ? ((sale.price - sale.cost) / sale.cost) * 100 : null;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="left">
+        <div class="sym-cell">
+          <span class="ticker">${escapeHtml(sale.symbol)}</span>
+          <span class="name">${escapeHtml(sale.name || '')}</span>
+        </div>
+      </td>
+      <td class="num">${escapeHtml(fmtDate(sale.date))}</td>
+      <td class="num">${trimNum(sale.shares)}</td>
+      <td class="num">${money(sale.cost)}</td>
+      <td class="num">${money(sale.price)}</td>
+      <td class="num">${money(sale.proceeds)}</td>
+      <td class="num"><div class="gl-cell"><span class="${signClass(sale.gain)}">${money(sale.gain, { sign: true })}</span>${
+        gainPctVal != null ? `<span class="pct ${signClass(sale.gain)}">${pct(gainPctVal)}</span>` : ''
+      }</div></td>
+    `;
+    body.appendChild(tr);
+  }
+}
+
 function renderBanner() {
   const banner = document.getElementById('banner');
   if (!state.hasApiKey) {
@@ -272,6 +326,8 @@ async function loadPortfolio() {
     state.quotes = data.quotes || {};
     state.errors = data.errors || {};
     state.history = data.history || [];
+    state.realized = data.realized || [];
+    state.realizedTotal = data.realizedTotal || 0;
     state.market = data.market || null;
     state.currency = data.settings.currency || 'USD';
     state.hasApiKey = data.settings.hasApiKey;
@@ -453,6 +509,93 @@ document.getElementById('deleteHoldingBtn').addEventListener('click', async () =
   closeModals();
   await loadPortfolio();
 });
+
+// ------------------------------------------------------------- sell
+
+const sellModal = document.getElementById('sellModal');
+
+// Opened from the edit dialog. Prefills the whole position at the current live
+// price — the common case is "I sold the lot at roughly what it's worth now".
+document.getElementById('openSellBtn').addEventListener('click', () => {
+  const id = document.getElementById('editId').value;
+  const h = state.holdings.find((x) => x.id === id);
+  if (!h) return;
+  const q = state.quotes[h.symbol];
+
+  document.getElementById('sellId').value = h.id;
+  document.getElementById('sellTitle').textContent = 'Sell ' + h.symbol;
+  document.getElementById('sellHeld').textContent = '(you hold ' + trimNum(h.shares) + ')';
+  document.getElementById('sellShares').value = h.shares;
+  document.getElementById('sellPrice').value = q && q.price ? q.price : '';
+  document.getElementById('sellPriceHint').textContent = q && q.price ? '(live: ' + money(q.price) + ')' : '';
+  document.getElementById('sellError').classList.add('hidden');
+  closeModals();
+  openModal(sellModal);
+  updateSellPreview();
+});
+
+// Running total of what the sale comes to, so there's no surprise on confirm.
+function updateSellPreview() {
+  const el = document.getElementById('sellPreview');
+  const h = state.holdings.find((x) => x.id === document.getElementById('sellId').value);
+  const shares = Number(document.getElementById('sellShares').value);
+  const price = Number(document.getElementById('sellPrice').value);
+  if (!h || !(shares > 0) || !(price >= 0)) {
+    el.innerHTML = '<span class="muted">Enter shares and a price to see the result.</span>';
+    return;
+  }
+  const proceeds = shares * price;
+  const gain = (price - h.cost) * shares;
+  const gainPct = h.cost > 0 ? ((price - h.cost) / h.cost) * 100 : null;
+  const left = h.shares - shares;
+  el.innerHTML =
+    `<div class="row"><span>Proceeds</span><b>${money(proceeds)}</b></div>` +
+    `<div class="row"><span>Realised gain / loss</span><b class="${signClass(gain)}">${money(gain, { sign: true })}` +
+    (gainPct != null ? ` <span class="pct">${pct(gainPct)}</span>` : '') +
+    `</b></div>` +
+    `<div class="row"><span>Shares left</span><b>${
+      left <= 1e-9 ? 'none — position closed' : trimNum(Math.round(left * 1e6) / 1e6)
+    }</b></div>`;
+}
+document.getElementById('sellShares').addEventListener('input', updateSellPreview);
+document.getElementById('sellPrice').addEventListener('input', updateSellPreview);
+
+document.getElementById('confirmSellBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('confirmSellBtn');
+  const err = document.getElementById('sellError');
+  const id = document.getElementById('sellId').value;
+  const shares = Number(document.getElementById('sellShares').value);
+  const price = Number(document.getElementById('sellPrice').value);
+
+  err.classList.add('hidden');
+  if (!(shares > 0)) return showSellError('Enter how many shares you sold.');
+  if (!(price >= 0)) return showSellError('Enter the price you sold at.');
+
+  btn.disabled = true;
+  btn.textContent = 'Recording…';
+  try {
+    const res = await fetch('/api/holdings/' + encodeURIComponent(id) + '/sell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shares, price }),
+    });
+    const j = await res.json();
+    if (!res.ok) return showSellError(j.error || 'Could not record that sale.');
+    closeModals();
+    await loadPortfolio();
+  } catch (e) {
+    showSellError('Could not reach the server: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Record sale';
+  }
+});
+
+function showSellError(msg) {
+  const err = document.getElementById('sellError');
+  err.textContent = msg;
+  err.classList.remove('hidden');
+}
 
 // ------------------------------------------------------------- settings
 
@@ -878,7 +1021,11 @@ function renderGainChart() {
 
   const points = filterByRange(state.history, gainRange)
     .map((p) => {
-      const gain = p.value != null && p.cost != null ? p.value - p.cost : null;
+      // Unrealised plus everything already banked, so the curve doesn't drop by
+      // the profit you took when you sold. Snapshots from before the first sale
+      // have no `realized` field, which is correctly nothing banked yet.
+      const unreal = p.value != null && p.cost != null ? p.value - p.cost : null;
+      const gain = unreal != null ? unreal + (Number(p.realized) || 0) : null;
       const pctVal = gain != null && p.cost > 0 ? (gain / p.cost) * 100 : null;
       return { date: p.date, gain, pct: pctVal };
     })

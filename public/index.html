@@ -44,6 +44,7 @@
         <div class="card-label">Total Gain / Loss</div>
         <div class="card-value" id="sumGain">—</div>
         <div class="card-sub" id="sumGainPct"></div>
+        <div class="card-sub realized-sub hidden" id="sumRealized"></div>
       </div>
       <div class="card">
         <div class="card-label">Amount Invested</div>
@@ -116,6 +117,28 @@
     </section>
 
     <!-- Holdings breakdown -->
+    <!-- Realised sales — only rendered once something has been sold -->
+    <section class="table-wrap hidden" id="salesSection">
+      <div class="sales-head">
+        <span class="sales-title">Sold</span>
+        <span class="sales-total" id="salesTotal"></span>
+      </div>
+      <table id="salesTable">
+        <thead>
+          <tr>
+            <th class="left">Symbol</th>
+            <th class="num">Date</th>
+            <th class="num">Shares</th>
+            <th class="num">Avg Cost</th>
+            <th class="num">Sold At</th>
+            <th class="num">Proceeds</th>
+            <th class="num">Realised G/L</th>
+          </tr>
+        </thead>
+        <tbody id="salesBody"></tbody>
+      </table>
+    </section>
+
     <section class="alloc-panel">
       <div class="alloc-title">Holdings breakdown</div>
       <div class="alloc-body">
@@ -222,9 +245,34 @@
       </div>
       <div class="modal-foot">
         <button class="btn danger-ghost" id="deleteHoldingBtn">Delete</button>
+        <button class="btn ghost" id="openSellBtn">Sell…</button>
         <div class="spacer"></div>
         <button class="btn ghost" data-close-modal>Cancel</button>
         <button class="btn primary" id="saveEditBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sell holding -->
+  <div class="modal-overlay hidden" id="sellModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="sellTitle">Sell</h2>
+        <button class="btn ghost icon" data-close-modal>✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="sellId" />
+        <label class="modal-label">Shares to sell <span class="modal-hint" id="sellHeld"></span></label>
+        <input id="sellShares" type="number" step="any" min="0" />
+        <label class="modal-label">Price per share <span class="modal-hint" id="sellPriceHint"></span></label>
+        <input id="sellPrice" type="number" step="any" min="0" />
+        <div class="sell-preview" id="sellPreview"></div>
+        <div id="sellError" class="form-error hidden"></div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn primary" id="confirmSellBtn">Record sale</button>
       </div>
     </div>
   </div>

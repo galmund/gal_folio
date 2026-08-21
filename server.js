@@ -35,7 +35,8 @@ const UPSTASH_KEY = process.env.UPSTASH_KEY || 'gal_folio_data';
 const DEFAULT_DATA = {
   settings: { apiKey: '', provider: 'finnhub', currency: 'USD', usdIls: 3.7 },
   holdings: [],
-  history: [], // daily value snapshots: { date, value, cost }
+  history: [], // daily value snapshots: { date, value, cost, realized }
+  realized: [], // completed sales: { id, date, symbol, shares, price, cost, proceeds, gain }
 };
 
 // ---------------------------------------------------------------- data store
@@ -45,6 +46,7 @@ function normalize(d) {
     settings: { ...DEFAULT_DATA.settings, ...((d && d.settings) || {}) },
     holdings: Array.isArray(d && d.holdings) ? d.holdings : [],
     history: Array.isArray(d && d.history) ? d.history : [],
+    realized: Array.isArray(d && d.realized) ? d.realized : [],
   };
 }
 
@@ -84,6 +86,21 @@ async function saveData(data) {
   await writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
 }
 
+// Every mutation is a read-modify-write of one whole document, so they have to
+// run one at a time. Without this, a /api/portfolio poll that loaded before a
+// sell would write its stale copy back afterwards — resurrecting the shares you
+// just sold and dropping the sale from the books. Single process, so an
+// in-memory promise chain is enough; the lock must span load → modify → save.
+let dataLock = Promise.resolve();
+function withData(fn) {
+  const run = dataLock.then(async () => fn(await loadData()));
+  dataLock = run.then(
+    () => {},
+    () => {} // a failed handler must not wedge the queue
+  );
+  return run;
+}
+
 // Save a backup of the current data before a destructive op (import). Storage-aware.
 async function backupCurrent() {
   try {
@@ -104,6 +121,11 @@ function effectiveKey(data) {
   return (data.settings && data.settings.apiKey) || process.env.FINNHUB_API_KEY || '';
 }
 
+// Trim float noise off a share count for display (7.5 stays 7.5, 7.5000001 doesn't).
+function trimShares(n) {
+  return String(Math.round(Number(n) * 1e6) / 1e6);
+}
+
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -117,6 +139,13 @@ function todayStr() {
     '-' +
     String(d.getDate()).padStart(2, '0')
   );
+}
+
+// Everything locked in from past sales, all-time.
+function realizedTotal(data) {
+  let t = 0;
+  for (const r of data.realized) t += Number(r.gain) || 0;
+  return Math.round(t * 100) / 100;
 }
 
 // Record (or update) today's portfolio-value snapshot. We only count holdings
@@ -134,10 +163,22 @@ function recordSnapshot(data, quotes) {
       valued = true;
     }
   }
-  if (!valued) return false;
+  if (!valued) {
+    // Nothing got priced. If holdings exist, that's a feed problem and writing
+    // a zero would punch a hole in the chart. But a genuinely empty portfolio
+    // with past sales still has a story to tell, so let that one through.
+    if (data.holdings.length || !data.realized.length) return false;
+  }
 
   const round2 = (n) => Math.round(n * 100) / 100;
-  const entry = { date: todayStr(), value: round2(value), cost: round2(cost) };
+  // `realized` is cumulative to date, so the profit curve stays continuous
+  // across a sale instead of dropping by whatever you just cashed out.
+  const entry = {
+    date: todayStr(),
+    value: round2(value),
+    cost: round2(cost),
+    realized: realizedTotal(data),
+  };
   const last = data.history[data.history.length - 1];
   if (last && last.date === entry.date) {
     data.history[data.history.length - 1] = entry;
@@ -632,20 +673,28 @@ const LOGIN_HTML = `<!DOCTYPE html>
 async function handleApi(req, res, url, pathname, method) {
   // Portfolio: holdings + a live quote for each symbol
   if (method === 'GET' && pathname === '/api/portfolio') {
-    const data = await loadData();
-    const apiKey = effectiveKey(data);
+    const snapshot = await loadData();
+    const apiKey = effectiveKey(snapshot);
     // Prices no longer need the Finnhub key — the extended-hours source is
     // key-less — so quote every holding regardless of whether one is set.
     const { quotes, errors } = await getQuotes(
-      data.holdings.map((h) => h.symbol),
+      snapshot.holdings.map((h) => h.symbol),
       apiKey
     );
-    if (recordSnapshot(data, quotes)) await saveData(data);
+    // Quoting just took a network round trip. Re-read under the lock so a sell
+    // or edit that landed meanwhile isn't overwritten, and so we report what's
+    // actually on disk now.
+    const data = await withData(async (d) => {
+      if (recordSnapshot(d, quotes)) await saveData(d);
+      return d;
+    });
     return sendJson(res, 200, {
       holdings: data.holdings,
       quotes,
       errors,
       history: data.history,
+      realized: data.realized,
+      realizedTotal: realizedTotal(data),
       market: marketStatus(quotes),
       settings: {
         hasApiKey: !!apiKey,
@@ -667,7 +716,7 @@ async function handleApi(req, res, url, pathname, method) {
     if (!symbol || !(shares > 0) || !(cost >= 0)) {
       return sendJson(res, 400, { error: 'Need a symbol, shares > 0, and a cost >= 0.' });
     }
-    const data = await loadData();
+    const out = await withData(async (data) => {
     const apiKey = effectiveKey(data);
 
     const existing = data.holdings.find((h) => h.symbol === symbol);
@@ -679,7 +728,7 @@ async function handleApi(req, res, url, pathname, method) {
       const nm = String(body.name || '').trim();
       if (!existing.name && nm) existing.name = nm;
       await saveData(data);
-      return sendJson(res, 200, { ...existing, merged: true });
+      return { status: 200, body: { ...existing, merged: true } };
     }
 
     let name = String(body.name || '').trim();
@@ -687,19 +736,69 @@ async function handleApi(req, res, url, pathname, method) {
     const holding = { id: genId(), symbol, name, shares, cost };
     data.holdings.push(holding);
     await saveData(data);
-    return sendJson(res, 201, { ...holding, merged: false });
+    return { status: 201, body: { ...holding, merged: false } };
+    });
+    return sendJson(res, out.status, out.body);
+  }
+
+  // Sell shares out of a holding. Reduces the position at its average cost and
+  // books what was realised; selling the lot removes the row but keeps the sale
+  // on the record. Deleting a holding stays a different thing — that's for
+  // fixing a row you never should have added.
+  const sellMatch = pathname.match(/^\/api\/holdings\/([^/]+)\/sell$/);
+  if (sellMatch && method === 'POST') {
+    const id = decodeURIComponent(sellMatch[1]);
+    const body = await readBody(req);
+    const out = await withData(async (data) => {
+    const h = data.holdings.find((x) => x.id === id);
+    if (!h) return { status: 404, body: { error: 'Holding not found' } };
+
+    const shares = Number(body.shares);
+    const price = Number(body.price);
+    if (!(shares > 0)) return { status: 400, body: { error: 'Enter how many shares you sold.' } };
+    if (shares > h.shares + 1e-9) {
+      return { status: 400, body: { error: `You only hold ${trimShares(h.shares)} shares.` } };
+    }
+    if (!(price >= 0)) return { status: 400, body: { error: 'Enter the price you sold at.' } };
+
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const sale = {
+      id: genId(),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || '')) ? body.date : todayStr(),
+      symbol: h.symbol,
+      name: h.name || '',
+      shares,
+      price,
+      cost: h.cost, // average cost basis — unchanged by a partial sale
+      proceeds: round2(price * shares),
+      gain: round2((price - h.cost) * shares),
+    };
+    data.realized.push(sale);
+
+    const left = h.shares - shares;
+    const soldOut = left <= 1e-9;
+    if (soldOut) data.holdings = data.holdings.filter((x) => x.id !== id);
+    else h.shares = Math.round(left * 1e6) / 1e6;
+
+    await saveData(data);
+    return {
+      status: 200,
+      body: { ok: true, sale, soldOut, sharesLeft: soldOut ? 0 : h.shares, realizedTotal: realizedTotal(data) },
+    };
+    });
+    return sendJson(res, out.status, out.body);
   }
 
   // Update / delete a holding by id
   const holdingMatch = pathname.match(/^\/api\/holdings\/([^/]+)$/);
   if (holdingMatch) {
     const id = decodeURIComponent(holdingMatch[1]);
-    const data = await loadData();
+    const body = method === 'PUT' ? await readBody(req) : null;
+    const out = await withData(async (data) => {
     const h = data.holdings.find((x) => x.id === id);
 
     if (method === 'PUT') {
-      if (!h) return sendJson(res, 404, { error: 'Holding not found' });
-      const body = await readBody(req);
+      if (!h) return { status: 404, body: { error: 'Holding not found' } };
       if (body.symbol != null) h.symbol = String(body.symbol).trim().toUpperCase();
       if (body.name != null) h.name = String(body.name).trim();
       if (body.shares != null) {
@@ -711,16 +810,19 @@ async function handleApi(req, res, url, pathname, method) {
         if (c >= 0) h.cost = c;
       }
       await saveData(data);
-      return sendJson(res, 200, h);
+      return { status: 200, body: h };
     }
 
     if (method === 'DELETE') {
       const before = data.holdings.length;
       data.holdings = data.holdings.filter((x) => x.id !== id);
-      if (data.holdings.length === before) return sendJson(res, 404, { error: 'Holding not found' });
+      if (data.holdings.length === before) return { status: 404, body: { error: 'Holding not found' } };
       await saveData(data);
-      return sendJson(res, 200, { ok: true });
+      return { status: 200, body: { ok: true } };
     }
+    return null; // method not handled here — fall through below
+    });
+    if (out) return sendJson(res, out.status, out.body);
   }
 
   // Single quote (used by the add form preview)
@@ -791,12 +893,34 @@ async function handleApi(req, res, url, pathname, method) {
           .filter((p) => p && typeof p.date === 'string' && isFinite(Number(p.value)))
           .map((p) => ({ date: p.date, value: Number(p.value), cost: Number(p.cost) || 0 }))
       : [];
+    const realized = Array.isArray(body.realized)
+      ? body.realized
+          .filter((r) => r && String(r.symbol || '').trim() && Number(r.shares) > 0)
+          .map((r) => ({
+            id: (r.id && String(r.id)) || genId(),
+            date: String(r.date || todayStr()),
+            symbol: String(r.symbol).trim().toUpperCase(),
+            name: String(r.name || '').trim(),
+            shares: Number(r.shares),
+            price: Number(r.price) || 0,
+            cost: Number(r.cost) || 0,
+            proceeds: Number(r.proceeds) || 0,
+            gain: Number(r.gain) || 0,
+          }))
+      : [];
     const settings = { ...DEFAULT_DATA.settings, ...(body.settings && typeof body.settings === 'object' ? body.settings : {}) };
 
-    await backupCurrent(); // safety backup (file .bak or Upstash :bak key)
-    await saveData({ settings, holdings, history });
+    await withData(async () => {
+      await backupCurrent(); // safety backup (file .bak or Upstash :bak key)
+      await saveData({ settings, holdings, history, realized });
+    });
     quoteCache.clear();
-    return sendJson(res, 200, { ok: true, holdings: holdings.length, history: history.length });
+    return sendJson(res, 200, {
+      ok: true,
+      holdings: holdings.length,
+      history: history.length,
+      realized: realized.length,
+    });
   }
 
   // Settings
@@ -813,7 +937,7 @@ async function handleApi(req, res, url, pathname, method) {
     }
     if (method === 'POST') {
       const body = await readBody(req);
-      const data = await loadData();
+      return await withData(async (data) => {
       if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
         data.settings.apiKey = body.apiKey.trim();
         quoteCache.clear(); // new key — re-fetch fresh
@@ -831,6 +955,7 @@ async function handleApi(req, res, url, pathname, method) {
         hasApiKey: !!effectiveKey(data),
         currency: data.settings.currency,
         usdIls: data.settings.usdIls,
+      });
       });
     }
   }
