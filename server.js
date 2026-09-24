@@ -1033,9 +1033,25 @@ const PUBLIC_PATHS = new Set([
 
 // The whole app as one plain (req, res) handler, so it runs unchanged both
 // behind http.createServer locally and as a serverless function on Vercel.
+// Recover the path the browser actually asked for. A Vercel rewrite hands the
+// function its DESTINATION path (/api/index), not the original one, so
+// vercel.json passes the real path along as `__path` and we put it back here.
+// Locally there's no rewrite and no `__path`, so this is a no-op.
+function requestUrl(req) {
+  const base = `http://${req.headers.host || 'localhost'}`;
+  const raw = new URL(req.url, base);
+  const forwarded = raw.searchParams.get('__path');
+  if (!forwarded) return raw;
+  const real = new URL(forwarded, base);
+  raw.searchParams.delete('__path');
+  // Vercel merges the original query string in alongside `__path` — carry it over.
+  for (const [k, v] of raw.searchParams) real.searchParams.append(k, v);
+  return real;
+}
+
 export default async function handler(req, res) {
   try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    const url = requestUrl(req);
     const pathname = url.pathname;
 
     if (AUTH_ENABLED) {
