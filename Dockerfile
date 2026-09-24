@@ -6,7 +6,7 @@ WORKDIR /app
 # No dependencies to install — the app uses only Node built-ins.
 COPY package.json ./
 COPY server.js ./
-COPY public ./public
+COPY web ./web
 
 # Data (holdings, settings, history) is written here. Mount a PERSISTENT volume
 # at /data so it survives restarts and redeploys.

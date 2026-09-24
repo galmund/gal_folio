@@ -69,9 +69,11 @@ settings, and API key. Back it up by copying that one file. Deleting it resets t
 ## Use it on your phone / in the cloud
 
 To reach the app from your iPhone (even when this PC is off), deploy it to a
-host — see **[DEPLOY.md](DEPLOY.md)**. Set a `GAL_PASSWORD` env var to turn on
-the login screen (required before putting it on the internet); leave it unset for
-password‑free local use.
+host — see **[DEPLOY.md](DEPLOY.md)**. **Vercel + Upstash** is the recommended
+combination: both are free, and Vercel never sleeps, so there's no wake‑up wait
+when you open the app. Set a `GAL_PASSWORD` env var to turn on the login screen
+(required before putting it on the internet); leave it unset for password‑free
+local use.
 
 ## Notes
 
