@@ -8,12 +8,12 @@
 import http from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { exec } from 'node:child_process';
 import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, 'web');
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const PORT = Number(process.env.PORT) || 5178;
 
@@ -31,6 +31,9 @@ const UPSTASH_URL = (process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, ''
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const USE_UPSTASH = !!(UPSTASH_URL && UPSTASH_TOKEN);
 const UPSTASH_KEY = process.env.UPSTASH_KEY || 'gal_folio_data';
+
+// Serverless hosts give you a read-only disk, so file storage can't work there.
+const IS_SERVERLESS = !!process.env.VERCEL;
 
 const DEFAULT_DATA = {
   settings: { apiKey: '', provider: 'finnhub', currency: 'USD', usdIls: 3.7 },
@@ -83,6 +86,12 @@ async function saveData(data) {
     await upstashCmd(['SET', UPSTASH_KEY, JSON.stringify(data)]);
     return;
   }
+  if (IS_SERVERLESS) {
+    throw new Error(
+      'No storage configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN — ' +
+        'a serverless deployment has no writable disk to fall back on.'
+    );
+  }
   await writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
 }
 
@@ -92,8 +101,49 @@ async function saveData(data) {
 // just sold and dropping the sale from the books. Single process, so an
 // in-memory promise chain is enough; the lock must span load → modify → save.
 let dataLock = Promise.resolve();
+
+// The in-memory chain above only orders requests inside ONE process. Serverless
+// hosts run several instances side by side, so on Upstash we also take a short
+// cross-instance lock — otherwise two instances can interleave load → save and
+// the later write silently discards the earlier one.
+const LOCK_KEY = UPSTASH_KEY + ':lock';
+const LOCK_TTL_MS = 5000;
+
+async function acquireRemoteLock() {
+  if (!USE_UPSTASH) return null;
+  const token = crypto.randomUUID();
+  for (let attempt = 0; attempt < 25; attempt++) {
+    try {
+      const { result } = await upstashCmd(['SET', LOCK_KEY, token, 'NX', 'PX', String(LOCK_TTL_MS)]);
+      if (result === 'OK') return token;
+    } catch {
+      return null; // lock unavailable → fall back to the in-process chain alone
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return null; // lock held too long (stale holder); the TTL will clear it
+}
+
+async function releaseRemoteLock(token) {
+  if (!token) return;
+  try {
+    // Only release a lock we still own — a TTL expiry may have passed it on.
+    const { result } = await upstashCmd(['GET', LOCK_KEY]);
+    if (result === token) await upstashCmd(['DEL', LOCK_KEY]);
+  } catch {
+    /* best effort — the TTL is the backstop */
+  }
+}
+
 function withData(fn) {
-  const run = dataLock.then(async () => fn(await loadData()));
+  const run = dataLock.then(async () => {
+    const token = await acquireRemoteLock();
+    try {
+      return await fn(await loadData());
+    } finally {
+      await releaseRemoteLock(token);
+    }
+  });
   dataLock = run.then(
     () => {},
     () => {} // a failed handler must not wedge the queue
@@ -524,6 +574,16 @@ function sendJson(res, status, obj) {
 }
 
 async function readBody(req) {
+  // Serverless hosts (Vercel) buffer and pre-parse the body before handing us
+  // the request, which leaves nothing on the stream — use theirs when it's there.
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
+    try {
+      return JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body));
+    } catch {
+      return {};
+    }
+  }
   const chunks = [];
   for await (const c of req) chunks.push(c);
   if (!chunks.length) return {};
@@ -971,7 +1031,9 @@ const PUBLIC_PATHS = new Set([
   '/login', '/logout', '/manifest.webmanifest', '/icon-180.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon.ico',
 ]);
 
-const server = http.createServer(async (req, res) => {
+// The whole app as one plain (req, res) handler, so it runs unchanged both
+// behind http.createServer locally and as a serverless function on Vercel.
+export default async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
@@ -1000,15 +1062,19 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     sendJson(res, 500, { error: e.message });
   }
-});
+}
 
-server.listen(PORT, '0.0.0.0', () => {
-  const url = `http://localhost:${PORT}`;
-  console.log('\n  📈  gal_folio is running');
-  console.log(`      →  ${url}`);
-  console.log(`      password protection: ${AUTH_ENABLED ? 'ON' : 'off (set GAL_PASSWORD to enable)'}\n`);
-  console.log('  Press Ctrl+C to stop.\n');
-  if (process.env.NO_OPEN !== '1' && process.platform === 'win32') {
-    exec(`start "" "${url}"`); // pop open the browser on Windows
-  }
-});
+// Only start a listening server when run directly (`node server.js`). Imported
+// as a serverless function, the platform owns the HTTP server instead.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  http.createServer(handler).listen(PORT, '0.0.0.0', () => {
+    const url = `http://localhost:${PORT}`;
+    console.log('\n  📈  gal_folio is running');
+    console.log(`      →  ${url}`);
+    console.log(`      password protection: ${AUTH_ENABLED ? 'ON' : 'off (set GAL_PASSWORD to enable)'}\n`);
+    console.log('  Press Ctrl+C to stop.\n');
+    if (process.env.NO_OPEN !== '1' && process.platform === 'win32') {
+      exec(`start "" "${url}"`); // pop open the browser on Windows
+    }
+  });
+}

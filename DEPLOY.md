@@ -26,8 +26,8 @@ it stays up even when your PC is off. You do this once, from a normal network
 | Variable | Required | What it does |
 |---|---|---|
 | `GAL_PASSWORD` | **yes** | The login password for the app. Pick a strong one. |
-| `UPSTASH_REDIS_REST_URL` | for Render | Upstash database URL. Enables cloud storage (needed on hosts with no persistent disk). |
-| `UPSTASH_REDIS_REST_TOKEN` | for Render | Upstash database token (pairs with the URL above). |
+| `UPSTASH_REDIS_REST_URL` | for Vercel/Render | Upstash database URL. Enables cloud storage (needed on hosts with no persistent disk). |
+| `UPSTASH_REDIS_REST_TOKEN` | for Vercel/Render | Upstash database token (pairs with the URL above). |
 | `DATA_FILE` | for disk hosts | File path for storage on hosts WITH a persistent disk (Fly/Railway). Use `/data/data.json`. Ignored when Upstash is set. |
 | `FINNHUB_API_KEY` | optional | Only for ticker search and company names — prices (incl. pre‑market / after hours) need no key. Can also be set in‑app under ⚙ Settings. |
 | `PORT` | auto | The host sets this for you. Don't hardcode it. |
@@ -40,7 +40,55 @@ it stays up even when your PC is off. You do this once, from a normal network
 
 ---
 
-## Option A — Render + Upstash ⭐ (free, no credit card)
+## Option A — Vercel + Upstash ⭐ (free, no cold-start wait)
+
+Vercel runs the app as a serverless function, so there's **no sleeping and no
+30–60s wake-up** — it's ready the moment you open it. It has no disk at all,
+so your data lives in **Upstash** (free Redis, no card needed).
+
+**1. Create the free database (Upstash):**
+- Sign up at **upstash.com** → **Create Database** (Redis) → pick a region near you.
+- On the database page, open the **REST API** section and copy two values:
+  **`UPSTASH_REDIS_REST_URL`** and **`UPSTASH_REDIS_REST_TOKEN`**.
+
+> Already running on Render? **Reuse the exact same Upstash values.** Both
+> deployments then read and write the same database, so all your holdings,
+> sales and history are already there — nothing to export or import.
+
+**2. Deploy the app (Vercel):**
+- Sign up at **vercel.com** → **Add New** → **Project** → import the `gal_folio` repo.
+- Framework Preset: **Other**. Leave the build and output settings empty —
+  `vercel.json` already describes everything.
+- Under **Environment Variables**, add:
+  - `GAL_PASSWORD` = your password
+  - `UPSTASH_REDIS_REST_URL` = (from step 1)
+  - `UPSTASH_REDIS_REST_TOKEN` = (from step 1)
+  - `FINNHUB_API_KEY` = your Finnhub key (optional — or set it in‑app later)
+- Click **Deploy**. You get a public `*.vercel.app` URL.
+
+Or from your machine, with the CLI:
+
+```bash
+npx vercel --prod
+```
+
+**3. Log in on your iPhone** (see "Put it on your iPhone home screen" below). If
+you reused the Render Upstash database, your portfolio is already there.
+
+> **Upstash is required on Vercel.** Serverless functions have a read-only
+> disk, so file storage can't work — the app returns a clear error if you
+> deploy without those two variables set.
+
+### How it's wired
+
+`vercel.json` rewrites every path to one function (`api/index.js`), which just
+re-exports the handler from `server.js`. The UI files live in `web/` rather than
+`public/` on purpose: Vercel serves static directories *before* applying
+rewrites, so a statically served `index.html` would bypass the password gate.
+
+---
+
+## Option B — Render + Upstash (free, but sleeps)
 
 Render's free web service sleeps after 15 min (a ~30–60s wake‑up delay) and has
 no persistent disk — so we keep your data in **Upstash** (a free Redis database,
@@ -68,7 +116,7 @@ no card needed). Both are free.
 > Note: the free instance sleeps when idle, so the first open after a while takes
 > ~30–60 seconds to wake. After that it's snappy.
 
-## Option B — Railway (easiest, ~$5/month)
+## Option C — Railway (easiest, ~$5/month)
 
 1. Push the code to GitHub (above).
 2. Sign up at **railway.app** → **New Project** → **Deploy from GitHub repo** →
@@ -81,7 +129,7 @@ no card needed). Both are free.
 6. Visit the URL, log in, and set your API key in ⚙ Settings if you didn't add it
    as a variable.
 
-## Option C — Fly.io (persistent volume, needs a card on file)
+## Option D — Fly.io (persistent volume, needs a card on file)
 
 1. Install the CLI: **flyctl** (fly.io/docs/hands-on/install-flyctl).
 2. In this folder: `fly launch` — accept the Dockerfile, **don't** deploy yet.
