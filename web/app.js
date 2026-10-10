@@ -84,7 +84,7 @@ function computeTotals() {
 
 // ------------------------------------------------------------- sorting
 
-let sortKey = null; // null = natural (insertion) order
+let sortKey = 'value'; // null = natural (insertion) order
 let sortDir = 'desc';
 
 // The value a column sorts by. Note "Today" sorts by % change (comparable across
