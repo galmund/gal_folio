@@ -35,20 +35,20 @@ function iconSvg({ squircle }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
-      <stop offset="0" stop-color="#26344b"/>
-      <stop offset="0.55" stop-color="#141b27"/>
-      <stop offset="1" stop-color="#090c12"/>
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#f4f6f9"/>
+      <stop offset="1" stop-color="#e3e8ef"/>
     </linearGradient>
     <radialGradient id="sheen" cx="0.5" cy="0" r="0.75">
       <stop offset="0" stop-color="#fff" stop-opacity="0.16"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="stroke" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#2fbf55"/>
-      <stop offset="1" stop-color="#7cf59a"/>
+      <stop offset="0" stop-color="#1f9e45"/>
+      <stop offset="1" stop-color="#34c759"/>
     </linearGradient>
     <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4ade6e" stop-opacity="0.32"/>
+      <stop offset="0" stop-color="#34c759" stop-opacity="0.22"/>
       <stop offset="1" stop-color="#4ade6e" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
@@ -58,8 +58,7 @@ function iconSvg({ squircle }) {
     </linearGradient>
     <mask id="areaMask"><rect x="232" y="300" width="560" height="500" fill="url(#fade)"/></mask>
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity="0.45"/>
-      <feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#3fd264" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#0b3d1c" flood-opacity="0.22"/>
     </filter>${squircle ? `
     <clipPath id="clip"><path d="${shape}"/></clipPath>` : ''}
   </defs>
@@ -69,7 +68,7 @@ function iconSvg({ squircle }) {
     <path d="${line} L792 800 L232 800 Z" fill="url(#area)" mask="url(#areaMask)"/>
     <path d="${line}" fill="none" stroke="url(#stroke)" stroke-width="84" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
   </g>${squircle ? `
-  <path d="${shape}" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" vector-effect="non-scaling-stroke"/>` : ''}
+  <path d="${shape}" fill="none" stroke="rgba(0,0,0,0.1)" stroke-width="1" vector-effect="non-scaling-stroke"/>` : ''}
 </svg>
 `;
 }
