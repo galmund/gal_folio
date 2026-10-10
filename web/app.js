@@ -231,13 +231,13 @@ function renderRow(h) {
         <span class="name">${escapeHtml(h.name || '')}</span>
       </div>
     </td>
-    <td class="num">${trimNum(h.shares)}</td>
-    <td class="num">${money(h.cost)}</td>
-    <td class="num">${priceCell}</td>
-    <td class="num">${dayCell}</td>
-    <td class="num">${todayGlCell}</td>
-    <td class="num">${r.marketValue != null ? money(r.marketValue) : '—'}</td>
-    <td class="num">${glCell}</td>
+    <td class="num" data-label="Shares">${trimNum(h.shares)}</td>
+    <td class="num" data-label="Avg cost">${money(h.cost)}</td>
+    <td class="num" data-label="Price">${priceCell}</td>
+    <td class="num" data-label="Today">${dayCell}</td>
+    <td class="num" data-label="Today's G/L">${todayGlCell}</td>
+    <td class="num" data-label="Value">${r.marketValue != null ? money(r.marketValue) : '—'}</td>
+    <td class="num" data-label="Gain / loss">${glCell}</td>
     <td class="actions-col"><span class="row-menu" title="Edit">✎</span></td>
   `;
   tr.querySelector('.row-menu').addEventListener('click', () => openEdit(h));
@@ -274,12 +274,12 @@ function renderSales() {
           <span class="name">${escapeHtml(sale.name || '')}</span>
         </div>
       </td>
-      <td class="num">${escapeHtml(fmtDate(sale.date))}</td>
-      <td class="num">${trimNum(sale.shares)}</td>
-      <td class="num">${money(sale.cost)}</td>
-      <td class="num">${money(sale.price)}</td>
-      <td class="num">${money(sale.proceeds)}</td>
-      <td class="num"><div class="gl-cell"><span class="${signClass(sale.gain)}">${money(sale.gain, { sign: true })}</span>${
+      <td class="num" data-label="Date">${escapeHtml(fmtDate(sale.date))}</td>
+      <td class="num" data-label="Shares">${trimNum(sale.shares)}</td>
+      <td class="num" data-label="Avg cost">${money(sale.cost)}</td>
+      <td class="num" data-label="Sold at">${money(sale.price)}</td>
+      <td class="num" data-label="Proceeds">${money(sale.proceeds)}</td>
+      <td class="num" data-label="Realised"><div class="gl-cell"><span class="${signClass(sale.gain)}">${money(sale.gain, { sign: true })}</span>${
         gainPctVal != null ? `<span class="pct ${signClass(sale.gain)}">${pct(gainPctVal)}</span>` : ''
       }</div></td>
     `;
