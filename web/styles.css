@@ -551,11 +551,25 @@ td.left { text-align: left; }
 
 .sales-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  padding: 14px 16px 0;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
 }
+.sales-head::-webkit-details-marker { display: none; }
+.sales-head::before {
+  content: '▸';
+  color: var(--text-dim);
+  font-size: 12px;
+  transition: transform 0.15s;
+}
+#salesSection[open] > .sales-head::before { transform: rotate(90deg); }
+#salesSection[open] > .sales-head { border-bottom: 1px solid var(--border); }
+.sales-total { margin-left: auto; }
+
+.sort-bar { display: none; }
 .sales-title {
   font-size: 12px;
   font-weight: 700;
@@ -641,7 +655,31 @@ td.left { text-align: left; }
   #holdingsTable td.actions-col { position: absolute; top: 10px; right: 6px; }
   .row-menu { display: inline-block; padding: 6px 10px; font-size: 18px; }
 
-  .sales-head { padding: 14px 16px 4px; }
+  .sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sort-bar label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .sort-bar select {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    color: var(--text);
+  }
+  .sort-bar .sort-dir { padding: 6px 12px; font-size: 16px; }
+  .table-wrap:has(#emptyState:not(.hidden)) .sort-bar { display: none; }
   .chart-legend { padding-left: 0; justify-content: center; }
 
   .modal-overlay { align-items: flex-end; padding: 0; }

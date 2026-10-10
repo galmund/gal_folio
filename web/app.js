@@ -117,6 +117,10 @@ function compareHoldings(a, b, key, dir) {
 }
 
 function updateSortIndicators() {
+  document.getElementById('sortSelect').value = sortKey || '';
+  const dirBtn = document.getElementById('sortDirBtn');
+  dirBtn.textContent = sortDir === 'asc' ? '↑' : '↓';
+  dirBtn.disabled = !sortKey;
   document.querySelectorAll('#holdingsTable th.sortable').forEach((th) => {
     const ind = th.querySelector('.sort-ind');
     if (th.dataset.sort === sortKey) {
@@ -1192,6 +1196,18 @@ document.querySelector('#holdingsTable thead').addEventListener('click', (e) => 
     sortKey = key;
     sortDir = key === 'symbol' ? 'asc' : 'desc';
   }
+  render();
+});
+
+document.getElementById('sortSelect').addEventListener('change', (e) => {
+  sortKey = e.target.value || null;
+  sortDir = sortKey === 'symbol' ? 'asc' : 'desc';
+  render();
+});
+
+document.getElementById('sortDirBtn').addEventListener('click', () => {
+  if (!sortKey) return;
+  sortDir = sortDir === 'asc' ? 'desc' : 'asc';
   render();
 });
 

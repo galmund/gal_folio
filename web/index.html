@@ -95,6 +95,21 @@
 
     <!-- Holdings table -->
     <section class="table-wrap">
+      <div class="sort-bar">
+        <label for="sortSelect">Sort by</label>
+        <select id="sortSelect">
+          <option value="">Default</option>
+          <option value="value">Market value</option>
+          <option value="gain">Gain / loss</option>
+          <option value="today">Today %</option>
+          <option value="todayGl">Today's G/L</option>
+          <option value="symbol">Symbol</option>
+          <option value="price">Price</option>
+          <option value="shares">Shares</option>
+          <option value="cost">Avg cost</option>
+        </select>
+        <button type="button" class="btn ghost sort-dir" id="sortDirBtn" title="Reverse order">↓</button>
+      </div>
       <table id="holdingsTable">
         <thead>
           <tr>
@@ -118,28 +133,6 @@
     </section>
 
     <!-- Holdings breakdown -->
-    <!-- Realised sales — only rendered once something has been sold -->
-    <section class="table-wrap hidden" id="salesSection">
-      <div class="sales-head">
-        <span class="sales-title">Sold</span>
-        <span class="sales-total" id="salesTotal"></span>
-      </div>
-      <table id="salesTable">
-        <thead>
-          <tr>
-            <th class="left">Symbol</th>
-            <th class="num">Date</th>
-            <th class="num">Shares</th>
-            <th class="num">Avg Cost</th>
-            <th class="num">Sold At</th>
-            <th class="num">Proceeds</th>
-            <th class="num">Realised G/L</th>
-          </tr>
-        </thead>
-        <tbody id="salesBody"></tbody>
-      </table>
-    </section>
-
     <section class="alloc-panel">
       <div class="alloc-title">Holdings breakdown</div>
       <div class="alloc-body">
@@ -179,6 +172,28 @@
       </div>
       <div class="chart-body" id="gainChartBody"></div>
     </section>
+
+    <!-- Realised sales — only rendered once something has been sold; folded by default -->
+    <details class="table-wrap hidden" id="salesSection">
+      <summary class="sales-head">
+        <span class="sales-title">Sold</span>
+        <span class="sales-total" id="salesTotal"></span>
+      </summary>
+      <table id="salesTable">
+        <thead>
+          <tr>
+            <th class="left">Symbol</th>
+            <th class="num">Date</th>
+            <th class="num">Shares</th>
+            <th class="num">Avg Cost</th>
+            <th class="num">Sold At</th>
+            <th class="num">Proceeds</th>
+            <th class="num">Realised G/L</th>
+          </tr>
+        </thead>
+        <tbody id="salesBody"></tbody>
+      </table>
+    </details>
   </main>
 
   <!-- Settings modal -->
