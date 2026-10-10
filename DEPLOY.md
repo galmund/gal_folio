@@ -161,7 +161,7 @@ docker run -d -p 8080:8080 \
 
 1. Open your app's URL in **Safari** and log in.
 2. Tap the **Share** button → **Add to Home Screen**.
-3. It installs with the 📈 icon and opens full‑screen, like a native app.
+3. It installs with the app icon and opens full‑screen, like a native app.
 
 ## Moving your current holdings over
 

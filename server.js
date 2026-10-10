@@ -695,12 +695,15 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>gal_folio — sign in</title>
 <meta name="theme-color" content="#0e1116"/>
-<link rel="apple-touch-icon" href="/icon-180.png"/>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48"/>
+<link rel="icon" href="/icon.svg" type="image/svg+xml"/>
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
 <style>
  *{box-sizing:border-box}
  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0e1116;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
  .card{background:#161b22;border:1px solid #2a3441;border-radius:14px;padding:28px 26px;width:min(360px,90vw);box-shadow:0 8px 30px rgba(0,0,0,.4)}
- .logo{font-size:26px;font-weight:700;margin-bottom:4px}
+ .logo{display:flex;align-items:center;gap:10px;font-size:26px;font-weight:700;margin-bottom:4px}
+ .logo img{width:34px;height:34px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.45))}
  .sub{color:#8b98a9;font-size:13px;margin-bottom:20px}
  label{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#8b98a9}
  input{width:100%;margin-top:6px;background:#0e1116;border:1px solid #2a3441;border-radius:9px;padding:12px;color:#e6edf3;font-size:16px}
@@ -711,7 +714,7 @@ const LOGIN_HTML = `<!DOCTYPE html>
 </style></head>
 <body>
  <div class="card">
-  <div class="logo">📈 gal_folio</div>
+  <div class="logo"><img src="/icon.svg" alt=""/>gal_folio</div>
   <div class="sub">Enter your password to continue</div>
   <form id="f">
    <label for="pw">Password</label>
@@ -1028,7 +1031,8 @@ async function handleApi(req, res, url, pathname, method) {
 // Paths reachable without a session (login flow + icons so the login page and
 // home-screen install work).
 const PUBLIC_PATHS = new Set([
-  '/login', '/logout', '/manifest.webmanifest', '/icon-180.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon.ico',
+  '/login', '/logout', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png',
+  '/apple-touch-icon.png', '/favicon.ico',
 ]);
 
 // The whole app as one plain (req, res) handler, so it runs unchanged both

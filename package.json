@@ -5,7 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "engines": {
     "node": ">=18"
