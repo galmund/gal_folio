@@ -570,6 +570,18 @@ td.left { text-align: left; }
 .sales-total { margin-left: auto; }
 
 .sort-bar { display: none; }
+
+.foldable > summary { cursor: pointer; list-style: none; user-select: none; }
+.foldable > summary::-webkit-details-marker { display: none; }
+.foldable > summary .chart-title::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.15s;
+}
+.foldable[open] > summary .chart-title::before { transform: rotate(90deg); }
+.foldable:not([open]) > summary { margin-bottom: 0; }
+.foldable:not([open]) .range-toggle { display: none; }
 .sales-title {
   font-size: 12px;
   font-weight: 700;

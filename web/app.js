@@ -1171,9 +1171,16 @@ function attachGainHover(body) {
 document.getElementById('rangeToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-range]');
   if (!btn) return;
+  e.preventDefault(); // it sits inside the panel's <summary>, which would otherwise fold
+
   currentRange = btn.dataset.range;
   document.querySelectorAll('#rangeToggle button').forEach((b) => b.classList.toggle('active', b === btn));
   renderChart();
+});
+
+// Folded panels have no width, so draw the chart once it's actually visible.
+document.getElementById('valueChartPanel').addEventListener('toggle', (e) => {
+  if (e.target.open) renderChart();
 });
 
 document.getElementById('gainRangeToggle').addEventListener('click', (e) => {
