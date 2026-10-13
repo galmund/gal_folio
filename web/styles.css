@@ -787,6 +787,40 @@ td.left { text-align: left; }
   .range-toggle { width: 100%; }
   .range-toggle button { flex: 1; }
 
+
+  .alloc-legend { min-width: 0; flex-basis: 100%; }
+
+  .toast { bottom: calc(16px + env(safe-area-inset-bottom)); }
+
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal {
+    max-width: none;
+    max-height: 92vh;
+    border-radius: 24px 24px 0 0;
+    border-bottom: none;
+    animation: sheet-up 0.4s var(--ease);
+  }
+  .modal::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 5px;
+    margin: 8px auto 0;
+    border-radius: 3px;
+    background: var(--fill-strong);
+  }
+  .modal-head { padding-top: 12px; }
+  .modal-foot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  .modal-foot .spacer, .modal-foot .btn[data-close-modal] { display: none; }
+  .modal-foot .btn { padding: 14px 16px; }
+  .modal-foot .btn.primary { grid-column: 1 / -1; order: 99; }
+}
+/* Narrow windows and phones: holdings and sales become one card per row. */
+@media (max-width: 1000px) {
   .sort-bar { display: flex; }
   .table-wrap { overflow: visible; }
 
@@ -860,38 +894,16 @@ td.left { text-align: left; }
     border: none;
     background: none;
   }
-
-  .alloc-legend { min-width: 0; flex-basis: 100%; }
-
-  .toast { bottom: calc(16px + env(safe-area-inset-bottom)); }
-
-  .modal-overlay { align-items: flex-end; padding: 0; }
-  .modal {
-    max-width: none;
-    max-height: 92vh;
-    border-radius: 24px 24px 0 0;
-    border-bottom: none;
-    animation: sheet-up 0.4s var(--ease);
-  }
-  .modal::before {
-    content: '';
-    display: block;
-    width: 36px;
-    height: 5px;
-    margin: 8px auto 0;
-    border-radius: 3px;
-    background: var(--fill-strong);
-  }
-  .modal-head { padding-top: 12px; }
-  .modal-foot {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom));
-  }
-  .modal-foot .spacer, .modal-foot .btn[data-close-modal] { display: none; }
-  .modal-foot .btn { padding: 14px 16px; }
-  .modal-foot .btn.primary { grid-column: 1 / -1; order: 99; }
 }
+
+/* Between phone and 1000px there's room for all six figures on one row. */
+@media (min-width: 621px) and (max-width: 1000px) {
+  #holdingsTable tbody tr, #salesTable tbody tr { grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 14px 20px; }
+  #holdingsTable td:first-child, #salesTable td:first-child { grid-column: 1 / 5; }
+  #holdingsTable td:nth-child(7), #salesTable td:nth-child(7) { grid-column: 5 / 7; }
+  #holdingsTable td.actions-col { right: 14px; }
+}
+
 @keyframes sheet-up { from { transform: translateY(100%); } }
 
 @media (prefers-reduced-motion: reduce) {
