@@ -7,7 +7,7 @@
   <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <!-- iPhone home-screen / PWA -->
-  <meta name="theme-color" content="#0e1116" />
+  <meta name="theme-color" content="#000000" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <meta name="apple-mobile-web-app-title" content="gal_folio" />
@@ -16,46 +16,157 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <div class="glow" aria-hidden="true"></div>
+
   <header class="topbar">
-    <div class="brand"><img class="logo" src="/icon.svg" alt="" width="28" height="28" /> gal_folio</div>
+    <div class="brand"><img class="logo" src="/icon.svg" alt="" width="36" height="36" /> gal_folio</div>
     <div class="topbar-actions">
-      <span id="marketState" class="mkt-badge hidden"></span>
-      <span id="lastUpdated" class="muted small"></span>
-      <button id="refreshBtn" class="btn ghost" title="Refresh prices">↻ Refresh</button>
-      <button id="settingsBtn" class="btn ghost icon" title="Settings">⚙</button>
+      <button id="refreshBtn" class="round-btn" title="Refresh prices" aria-label="Refresh prices">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+      </button>
+      <button id="addOpenBtn" class="round-btn" title="Add holding" aria-label="Add holding" data-open-add>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button id="settingsBtn" class="round-btn" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.03z"/></svg>
+      </button>
     </div>
   </header>
 
   <main>
     <div id="banner" class="banner hidden"></div>
 
-    <!-- Summary cards -->
-    <section class="summary">
-      <div class="card">
-        <div class="card-label">Total Value</div>
-        <div class="card-value" id="sumValue">—</div>
-        <div class="card-sub muted" id="sumValueIls"></div>
+    <section class="hero">
+      <div class="hero-meta">
+        <span id="marketState" class="mkt-badge hidden"></span>
+        <span id="lastUpdated"></span>
       </div>
-      <div class="card">
-        <div class="card-label">Today</div>
-        <div class="card-value" id="sumDay">—</div>
-        <div class="card-sub" id="sumDayPct"></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Total Gain / Loss</div>
-        <div class="card-value" id="sumGain">—</div>
-        <div class="card-sub" id="sumGainPct"></div>
-        <div class="card-sub realized-sub hidden" id="sumRealized"></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Amount Invested</div>
-        <div class="card-value" id="sumCost">—</div>
+      <div class="hero-label">Total value</div>
+      <div class="card-value" id="sumValue">—</div>
+      <div class="card-sub" id="sumValueIls"></div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-icon tint-blue">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+          </div>
+          <div class="card-value" id="sumDay">—</div>
+          <div class="stat-label">Today</div>
+          <div class="card-sub" id="sumDayPct"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-icon tint-yellow">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/></svg>
+          </div>
+          <div class="card-value" id="sumGain">—</div>
+          <div class="stat-label">Total gain</div>
+          <div class="card-sub" id="sumGainPct"></div>
+          <div class="card-sub realized-sub hidden" id="sumRealized"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-icon tint-purple">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/><path d="M16 14.5h2"/></svg>
+          </div>
+          <div class="card-value" id="sumCost">—</div>
+          <div class="stat-label">Invested</div>
+        </div>
       </div>
     </section>
 
+    <!-- Holdings -->
+    <section class="panel table-wrap" id="holdingsPanel">
+      <div class="panel-head">
+        <h2 class="panel-title">Holdings</h2>
+        <div class="sort-bar">
+          <label for="sortSelect" class="visually-hidden">Sort by</label>
+          <div class="select-pill">
+            <select id="sortSelect">
+              <option value="">Order added</option>
+              <option value="value">Market value</option>
+              <option value="gain">Gain / loss</option>
+              <option value="today">Today %</option>
+              <option value="todayGl">Today's G/L</option>
+              <option value="symbol">Symbol</option>
+              <option value="price">Price</option>
+              <option value="shares">Shares</option>
+              <option value="cost">Avg cost</option>
+            </select>
+          </div>
+          <button type="button" class="round-btn small sort-dir" id="sortDirBtn" title="Reverse order">↓</button>
+        </div>
+      </div>
+      <table id="holdingsTable">
+        <thead>
+          <tr>
+            <th class="left sortable" data-sort="symbol">Symbol<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="shares">Shares<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="cost">Avg cost<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="price">Price<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="today">Today<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="todayGl">Today's G/L<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="value">Market value<span class="sort-ind"></span></th>
+            <th class="num sortable" data-sort="gain">Gain / loss<span class="sort-ind"></span></th>
+            <th class="actions-col"></th>
+          </tr>
+        </thead>
+        <tbody id="holdingsBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty hidden">
+        <div class="stat-icon tint-blue empty-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l5-5 4 3 7-8"/><path d="M15 7h5v5"/></svg>
+        </div>
+        <p>No holdings yet. Add your first stock to start tracking.</p>
+        <button type="button" class="btn primary" data-open-add>Add holding</button>
+      </div>
+    </section>
+
+    <!-- Holdings breakdown -->
+    <section class="panel alloc-panel">
+      <h2 class="panel-title">Breakdown</h2>
+      <div class="alloc-body">
+        <div class="alloc-donut">
+          <svg id="allocDonut" viewBox="0 0 240 240" width="240" height="240"></svg>
+        </div>
+        <div class="alloc-legend" id="allocLegend"></div>
+      </div>
+    </section>
+
+    <!-- Gain / loss over time -->
+    <section class="panel chart-panel">
+      <div class="chart-head">
+        <div class="chart-title">Gain / loss over time <span class="chart-note">Actual profit — excludes new buys</span></div>
+        <div class="range-toggle" id="gainRangeToggle">
+          <button data-range="7">1W</button>
+          <button data-range="30">1M</button>
+          <button data-range="90">3M</button>
+          <button data-range="365">1Y</button>
+          <button data-range="all" class="active">All</button>
+        </div>
+      </div>
+      <div class="chart-body" id="gainChartBody"></div>
+    </section>
+
+    <!-- Value over time — folded by default -->
+    <details class="panel chart-panel foldable" id="valueChartPanel">
+      <summary class="chart-head">
+        <div class="chart-title">Portfolio value over time <span class="chart-note">Total worth — includes money you add</span></div>
+        <div class="range-toggle" id="rangeToggle">
+          <button data-range="7">1W</button>
+          <button data-range="30">1M</button>
+          <button data-range="90">3M</button>
+          <button data-range="365">1Y</button>
+          <button data-range="all" class="active">All</button>
+        </div>
+      </summary>
+      <div class="chart-body" id="chartBody"></div>
+    </details>
+
     <!-- USD -> ILS converter -->
-    <section class="fx-panel">
-      <div class="fx-rate" id="fxRate">USD → ILS · loading rate…</div>
+    <section class="panel fx-panel">
+      <div class="fx-head">
+        <h2 class="panel-title">Currency</h2>
+        <div class="fx-rate" id="fxRate">USD → ILS · loading rate…</div>
+      </div>
       <div class="fx-convert">
         <div class="fx-field">
           <span class="fx-cur">$</span>
@@ -71,112 +182,10 @@
       </div>
     </section>
 
-    <!-- Add holding -->
-    <section class="add-panel">
-      <form id="addForm" autocomplete="off">
-        <div class="field symbol-field">
-          <label>Symbol</label>
-          <input id="symbolInput" type="text" placeholder="e.g. AAPL" spellcheck="false" />
-          <div id="searchResults" class="search-dropdown hidden"></div>
-        </div>
-        <div class="field">
-          <label>Shares</label>
-          <input id="sharesInput" type="number" step="any" min="0" placeholder="10" />
-        </div>
-        <div class="field">
-          <label>Avg cost / share</label>
-          <input id="costInput" type="number" step="any" min="0" placeholder="150.00" />
-        </div>
-        <button type="submit" class="btn primary" id="addBtn">+ Add holding</button>
-      </form>
-      <div id="addError" class="form-error hidden"></div>
-      <div id="addNote" class="form-note hidden"></div>
-    </section>
-
-    <!-- Holdings table -->
-    <section class="table-wrap">
-      <div class="sort-bar">
-        <label for="sortSelect">Sort by</label>
-        <select id="sortSelect">
-          <option value="">Order added</option>
-          <option value="value">Market value</option>
-          <option value="gain">Gain / loss</option>
-          <option value="today">Today %</option>
-          <option value="todayGl">Today's G/L</option>
-          <option value="symbol">Symbol</option>
-          <option value="price">Price</option>
-          <option value="shares">Shares</option>
-          <option value="cost">Avg cost</option>
-        </select>
-        <button type="button" class="btn ghost sort-dir" id="sortDirBtn" title="Reverse order">↓</button>
-      </div>
-      <table id="holdingsTable">
-        <thead>
-          <tr>
-            <th class="left sortable" data-sort="symbol">Symbol<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="shares">Shares<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="cost">Avg Cost<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="price">Price<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="today">Today<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="todayGl">Today's G/L<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="value">Market Value<span class="sort-ind"></span></th>
-            <th class="num sortable" data-sort="gain">Gain / Loss<span class="sort-ind"></span></th>
-            <th class="actions-col"></th>
-          </tr>
-        </thead>
-        <tbody id="holdingsBody"></tbody>
-      </table>
-      <div id="emptyState" class="empty hidden">
-        <div class="empty-emoji">🗂️</div>
-        <p>No holdings yet. Add your first stock above to start tracking.</p>
-      </div>
-    </section>
-
-    <!-- Holdings breakdown -->
-    <section class="alloc-panel">
-      <div class="alloc-title">Holdings breakdown</div>
-      <div class="alloc-body">
-        <div class="alloc-donut">
-          <svg id="allocDonut" viewBox="0 0 240 240" width="240" height="240"></svg>
-        </div>
-        <div class="alloc-legend" id="allocLegend"></div>
-      </div>
-    </section>
-
-    <!-- Gain / loss over time -->
-    <section class="chart-panel">
-      <div class="chart-head">
-        <div class="chart-title">Gain / loss over time <span class="chart-note">actual profit — excludes new buys</span></div>
-        <div class="range-toggle" id="gainRangeToggle">
-          <button data-range="7">1W</button>
-          <button data-range="30">1M</button>
-          <button data-range="90">3M</button>
-          <button data-range="365">1Y</button>
-          <button data-range="all" class="active">All</button>
-        </div>
-      </div>
-      <div class="chart-body" id="gainChartBody"></div>
-    </section>
-
-    <!-- Value over time — folded by default -->
-    <details class="chart-panel foldable" id="valueChartPanel">
-      <summary class="chart-head">
-        <div class="chart-title">Portfolio value over time <span class="chart-note">total worth — includes money you add</span></div>
-        <div class="range-toggle" id="rangeToggle">
-          <button data-range="7">1W</button>
-          <button data-range="30">1M</button>
-          <button data-range="90">3M</button>
-          <button data-range="365">1Y</button>
-          <button data-range="all" class="active">All</button>
-        </div>
-      </summary>
-      <div class="chart-body" id="chartBody"></div>
-    </details>
-
     <!-- Realised sales — only rendered once something has been sold; folded by default -->
-    <details class="table-wrap hidden" id="salesSection">
+    <details class="panel table-wrap foldable hidden" id="salesSection">
       <summary class="sales-head">
-        <span class="sales-title">Sold</span>
+        <span class="panel-title">Sold</span>
         <span class="sales-total" id="salesTotal"></span>
       </summary>
       <table id="salesTable">
@@ -185,8 +194,8 @@
             <th class="left">Symbol</th>
             <th class="num">Date</th>
             <th class="num">Shares</th>
-            <th class="num">Avg Cost</th>
-            <th class="num">Sold At</th>
+            <th class="num">Avg cost</th>
+            <th class="num">Sold at</th>
             <th class="num">Proceeds</th>
             <th class="num">Realised G/L</th>
           </tr>
@@ -196,12 +205,49 @@
     </details>
   </main>
 
+  <div id="addNote" class="toast hidden" role="status"></div>
+
+  <!-- Add holding -->
+  <div class="modal-overlay hidden" id="addModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Add holding</h2>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
+      </div>
+      <form id="addForm" autocomplete="off">
+        <div class="modal-body">
+          <div class="field symbol-field">
+            <label class="modal-label" for="symbolInput">Symbol</label>
+            <input id="symbolInput" type="text" placeholder="e.g. AAPL" spellcheck="false" autocapitalize="characters" />
+            <div id="searchResults" class="search-dropdown hidden"></div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label class="modal-label" for="sharesInput">Shares</label>
+              <input id="sharesInput" type="number" step="any" min="0" inputmode="decimal" placeholder="10" />
+            </div>
+            <div class="field">
+              <label class="modal-label" for="costInput">Avg cost / share</label>
+              <input id="costInput" type="number" step="any" min="0" inputmode="decimal" placeholder="150.00" />
+            </div>
+          </div>
+          <div id="addError" class="form-error hidden"></div>
+        </div>
+        <div class="modal-foot">
+          <div class="spacer"></div>
+          <button type="button" class="btn ghost" data-close-modal>Cancel</button>
+          <button type="submit" class="btn primary" id="addBtn">Add holding</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Settings modal -->
   <div class="modal-overlay hidden" id="settingsModal">
     <div class="modal">
       <div class="modal-head">
         <h2>Settings</h2>
-        <button class="btn ghost icon" data-close-modal>✕</button>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
         <label class="modal-label" for="apiKeyInput">Finnhub API key</label>
@@ -230,8 +276,8 @@
 
         <label class="modal-label">Backup &amp; restore</label>
         <div class="io-row">
-          <a class="btn ghost" id="exportBtn" href="/api/export" download>⬇ Export data</a>
-          <button class="btn ghost" id="importBtn" type="button">⬆ Import data</button>
+          <a class="btn ghost" id="exportBtn" href="/api/export" download>Export data</a>
+          <button class="btn ghost" id="importBtn" type="button">Import data</button>
           <input type="file" id="importFile" accept="application/json,.json" class="hidden" />
         </div>
         <p class="hint">Export saves everything (holdings, history, settings, and your API key) to one file. Import replaces the current data with a backup file — handy for moving to another machine or the cloud. The current data is backed up first.</p>
@@ -250,7 +296,7 @@
     <div class="modal">
       <div class="modal-head">
         <h2 id="editTitle">Edit holding</h2>
-        <button class="btn ghost icon" data-close-modal>✕</button>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="editId" />
@@ -274,7 +320,7 @@
     <div class="modal">
       <div class="modal-head">
         <h2 id="sellTitle">Sell</h2>
-        <button class="btn ghost icon" data-close-modal>✕</button>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="sellId" />

@@ -694,23 +694,26 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>gal_folio — sign in</title>
-<meta name="theme-color" content="#0e1116"/>
+<meta name="theme-color" content="#000000"/>
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48"/>
 <link rel="icon" href="/icon.svg" type="image/svg+xml"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
 <style>
  *{box-sizing:border-box}
- body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0e1116;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
- .card{background:#161b22;border:1px solid #2a3441;border-radius:14px;padding:28px 26px;width:min(360px,90vw);box-shadow:0 8px 30px rgba(0,0,0,.4)}
- .logo{display:flex;align-items:center;gap:10px;font-size:26px;font-weight:700;margin-bottom:4px}
- .logo img{width:34px;height:34px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.45))}
- .sub{color:#8b98a9;font-size:13px;margin-bottom:20px}
- label{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#8b98a9}
- input{width:100%;margin-top:6px;background:#0e1116;border:1px solid #2a3441;border-radius:9px;padding:12px;color:#e6edf3;font-size:16px}
- input:focus{outline:none;border-color:#4c8dff}
- button{width:100%;margin-top:16px;background:#4c8dff;color:#fff;border:none;border-radius:9px;padding:12px;font-size:15px;font-weight:600;cursor:pointer}
- button:hover{background:#5c99ff}
- .err{color:#f85149;font-size:13px;margin-top:12px;min-height:16px}
+ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;color:#fff;-webkit-font-smoothing:antialiased;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:radial-gradient(60% 50% at 50% 0%,rgba(48,209,88,.16),transparent 70%),radial-gradient(40% 40% at 15% 0%,rgba(110,120,140,.22),transparent 70%),#000}
+ .card{width:min(380px,100%);text-align:center}
+ .logo{display:flex;flex-direction:column;align-items:center;gap:14px;font-size:28px;font-weight:700;letter-spacing:-.02em;margin-bottom:6px}
+ .logo img{width:84px;height:84px;filter:drop-shadow(0 10px 24px rgba(0,0,0,.6))}
+ .sub{color:rgba(235,235,245,.6);font-size:15px;margin-bottom:28px}
+ form{text-align:left;padding:20px;border-radius:22px;background:rgba(28,28,30,.72);border:.5px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+ label{font-size:13px;font-weight:600;color:rgba(235,235,245,.6)}
+ input{width:100%;margin-top:8px;background:rgba(0,0,0,.3);border:.5px solid rgba(255,255,255,.12);border-radius:12px;padding:13px 14px;color:#fff;font-size:16px}
+ input:focus{outline:none;border-color:#0a84ff;box-shadow:0 0 0 3px rgba(10,132,255,.25)}
+ button{width:100%;margin-top:16px;background:#0a84ff;color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:600;cursor:pointer}
+ button:hover{background:#3395ff}
+ .err{color:#ff453a;font-size:13px;margin-top:12px;text-align:center}
+ .err:empty{display:none}
 </style></head>
 <body>
  <div class="card">

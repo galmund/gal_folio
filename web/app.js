@@ -154,6 +154,7 @@ function render() {
   updateSortIndicators();
 
   const t = computeTotals();
+  document.body.dataset.trend = t.day == null ? '' : t.day >= 0 ? 'up' : 'down';
   setCard('sumValue', money(t.value), '');
   const ilsSub = document.getElementById('sumValueIls');
   if (ilsSub) ilsSub.textContent = state.fxRate && t.value != null ? '≈ ' + ils(t.value * state.fxRate) : '';
@@ -242,9 +243,9 @@ function renderRow(h) {
     <td class="num" data-label="Today's G/L">${todayGlCell}</td>
     <td class="num" data-label="Value">${r.marketValue != null ? money(r.marketValue) : '—'}</td>
     <td class="num" data-label="Gain / loss">${glCell}</td>
-    <td class="actions-col"><span class="row-menu" title="Edit">✎</span></td>
+    <td class="actions-col"><span class="row-menu" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></td>
   `;
-  tr.querySelector('.row-menu').addEventListener('click', () => openEdit(h));
+  tr.addEventListener('click', () => openEdit(h));
   return tr;
 }
 
@@ -292,15 +293,7 @@ function renderSales() {
 }
 
 function renderBanner() {
-  const banner = document.getElementById('banner');
-  if (!state.hasApiKey) {
-    banner.innerHTML =
-      'ℹ️ Live prices (including pre-market and after hours) work without a key. ' +
-      'Add a free Finnhub key in ⚙ Settings to enable ticker search when adding holdings.';
-    banner.classList.remove('hidden');
-  } else {
-    banner.classList.add('hidden');
-  }
+  document.getElementById('banner').classList.add('hidden');
 }
 
 function trimNum(n) {
@@ -318,7 +311,6 @@ function escapeHtml(s) {
 async function loadPortfolio() {
   const btn = document.getElementById('refreshBtn');
   btn.classList.add('spinning');
-  btn.textContent = '↻ …';
   try {
     const res = await fetch('/api/portfolio');
     if (res.status === 401) {
@@ -350,7 +342,6 @@ async function loadPortfolio() {
     document.getElementById('banner').classList.remove('hidden');
   } finally {
     btn.classList.remove('spinning');
-    btn.textContent = '↻ Refresh';
   }
 }
 
@@ -390,7 +381,7 @@ function showAddNote(msg) {
   el.textContent = msg;
   el.classList.remove('hidden');
   clearTimeout(addNoteTimer);
-  addNoteTimer = setTimeout(() => el.classList.add('hidden'), 6000);
+  addNoteTimer = setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
 addForm.addEventListener('submit', async (e) => {
@@ -419,12 +410,13 @@ addForm.addEventListener('submit', async (e) => {
     addForm.reset();
     pendingName = '';
     hideSearch();
+    closeModals();
     await loadPortfolio();
-    if (result.merged) {
-      showAddNote(
-        `Merged into ${result.symbol} — now ${trimNum(result.shares)} shares at avg cost ${money(result.cost)}.`
-      );
-    }
+    showAddNote(
+      result.merged
+        ? `Merged into ${result.symbol} — now ${trimNum(result.shares)} shares at avg cost ${money(result.cost)}.`
+        : `Added ${symbol}.`
+    );
   } catch (e2) {
     errBox.textContent = e2.message;
     errBox.classList.remove('hidden');
@@ -680,6 +672,14 @@ document.getElementById('importFile').addEventListener('change', async (e) => {
 // ------------------------------------------------------------- modal plumbing
 
 function openModal(m) { m.classList.remove('hidden'); }
+
+document.querySelectorAll('[data-open-add]').forEach((b) =>
+  b.addEventListener('click', () => {
+    document.getElementById('addError').classList.add('hidden');
+    openModal(document.getElementById('addModal'));
+    setTimeout(() => symbolInput.focus(), 50);
+  })
+)
 function closeModals() {
   document.querySelectorAll('.modal-overlay').forEach((m) => m.classList.add('hidden'));
 }
@@ -696,8 +696,8 @@ document.getElementById('refreshBtn').addEventListener('click', () => {
 // ------------------------------------------------------------- allocation donut
 
 const ALLOC_PALETTE = [
-  '#4c8dff', '#3fb950', '#f0883e', '#a371f7', '#f85149', '#2dd4bf',
-  '#e3b341', '#ec6cb9', '#56d364', '#79c0ff', '#ff7b72', '#d2a8ff',
+  '#0a84ff', '#30d158', '#ff9f0a', '#bf5af2', '#ff453a', '#64d2ff',
+  '#ffd60a', '#ff375f', '#5e5ce6', '#66d4cf', '#ac8e68', '#ff6482',
 ];
 
 // Group holdings by symbol (so multiple lots of the same ticker form one slice)
@@ -912,7 +912,7 @@ function renderChart() {
 
   const up = points[n - 1].value >= points[0].value;
   const lineColor = up ? 'var(--green)' : 'var(--red)';
-  const fillColor = up ? 'rgba(63,185,80,0.14)' : 'rgba(248,81,73,0.12)';
+  const fillColor = up ? '#30d158' : '#ff453a';
 
   let linePath = '';
   let costPath = '';
@@ -944,15 +944,18 @@ function renderChart() {
 
   body.innerHTML =
     '<svg id="chartSvg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+    '<defs><linearGradient id="valueFill" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="' + fillColor + '" stop-opacity="0.32" />' +
+    '<stop offset="1" stop-color="' + fillColor + '" stop-opacity="0" /></linearGradient></defs>' +
     grid + xlabels +
-    '<path d="' + areaPath + '" fill="' + fillColor + '" stroke="none" />' +
+    '<path d="' + areaPath + '" fill="url(#valueFill)" stroke="none" />' +
     '<path d="' + costPath + '" fill="none" stroke="var(--text-dim)" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.7" />' +
     '<path d="' + linePath + '" fill="none" stroke="' + lineColor + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />' +
     '<line id="crosshair" class="crosshair hidden" y1="' + padT + '" y2="' + (padT + plotH) + '" />' +
     '<circle id="hoverDot" class="hover-dot hidden" r="4.5" />' +
     '<rect id="chartOverlay" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent" />' +
     '</svg>' +
-    '<div class="chart-legend"><span class="lg-value" style="color:' + (up ? '#3fb950' : '#f85149') + '">— Value</span><span>- - Invested</span></div>' +
+    '<div class="chart-legend"><span class="lg-value" style="color:' + fillColor + '">— Value</span><span>- - Invested</span></div>' +
     '<div id="chartTip" class="chart-tip hidden"></div>';
 
   attachChartHover(body);
@@ -1099,16 +1102,18 @@ function renderGainChart() {
     '<defs>' +
     '<clipPath id="gainPos"><rect x="0" y="' + padT + '" width="' + W + '" height="' + Math.max(0, zeroY - padT).toFixed(1) + '"/></clipPath>' +
     '<clipPath id="gainNeg"><rect x="0" y="' + zeroY.toFixed(1) + '" width="' + W + '" height="' + Math.max(0, padT + plotH - zeroY).toFixed(1) + '"/></clipPath>' +
+    '<linearGradient id="gainFillPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#30d158" stop-opacity="0.32" /><stop offset="1" stop-color="#30d158" stop-opacity="0.02" /></linearGradient>' +
+    '<linearGradient id="gainFillNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff453a" stop-opacity="0.32" /><stop offset="1" stop-color="#ff453a" stop-opacity="0.02" /></linearGradient>' +
     '</defs>';
 
   body.innerHTML =
     '<svg id="gainSvg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
     defs + grid + xlabels +
-    '<path d="' + areaPath + '" fill="#3fb950" fill-opacity="0.15" clip-path="url(#gainPos)" />' +
-    '<path d="' + areaPath + '" fill="#f85149" fill-opacity="0.13" clip-path="url(#gainNeg)" />' +
+    '<path d="' + areaPath + '" fill="url(#gainFillPos)" clip-path="url(#gainPos)" />' +
+    '<path d="' + areaPath + '" fill="url(#gainFillNeg)" clip-path="url(#gainNeg)" />' +
     '<line x1="' + padL + '" y1="' + zeroY.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + zeroY.toFixed(1) + '" class="zero-line" />' +
-    '<path d="' + linePath + '" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainPos)" />' +
-    '<path d="' + linePath + '" fill="none" stroke="#f85149" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainNeg)" />' +
+    '<path d="' + linePath + '" fill="none" stroke="#30d158" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainPos)" />' +
+    '<path d="' + linePath + '" fill="none" stroke="#ff453a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainNeg)" />' +
     '<line id="gainCross" class="crosshair hidden" y1="' + padT + '" y2="' + (padT + plotH) + '" />' +
     '<circle id="gainDot" class="hover-dot hidden" r="4.5" />' +
     '<rect id="gainOverlay" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent" />' +
@@ -1296,6 +1301,7 @@ function maybePrefillConverter() {
   if (t.value == null) return;
   usdInput.value = t.value.toFixed(2);
   fxPrefilled = true;
+  syncFromUsd();
 }
 
 usdInput.addEventListener('input', syncFromUsd);
