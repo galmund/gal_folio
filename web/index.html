@@ -7,9 +7,16 @@
   <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <!-- iPhone home-screen / PWA -->
-  <meta name="theme-color" content="#000000" />
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <script>
+    try {
+      var t = localStorage.getItem('gal_theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
   <meta name="apple-mobile-web-app-title" content="gal_folio" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
@@ -250,6 +257,13 @@
         <button class="close-btn" data-close-modal aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
+        <span class="modal-label">Appearance</span>
+        <div class="range-toggle appearance-toggle" id="appearanceToggle">
+          <button type="button" data-theme-choice="auto">Automatic</button>
+          <button type="button" data-theme-choice="light">Light</button>
+          <button type="button" data-theme-choice="dark">Dark</button>
+        </div>
+
         <label class="modal-label" for="apiKeyInput">Finnhub API key</label>
         <input id="apiKeyInput" type="password" placeholder="Paste your free API key" spellcheck="false" />
         <p class="hint">

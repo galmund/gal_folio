@@ -669,6 +669,46 @@ document.getElementById('importFile').addEventListener('change', async (e) => {
   showAddNote(`Imported ${result.holdings} holding${result.holdings === 1 ? '' : 's'} from backup.`);
 });
 
+// ------------------------------------------------------------- appearance
+
+// Per-device choice, so it lives in localStorage rather than the shared data file.
+const THEME_COLORS = { light: '#f2f2f7', dark: '#000000' };
+
+function currentThemeChoice() {
+  try {
+    const t = localStorage.getItem('gal_theme');
+    return t === 'light' || t === 'dark' ? t : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
+function applyTheme(choice) {
+  const root = document.documentElement;
+  if (choice === 'auto') delete root.dataset.theme;
+  else root.dataset.theme = choice;
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    const scheme = m.media.includes('light') ? 'light' : 'dark';
+    m.content = THEME_COLORS[choice === 'auto' ? scheme : choice];
+  });
+  document.querySelectorAll('#appearanceToggle button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.themeChoice === choice)
+  );
+}
+
+document.getElementById('appearanceToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-theme-choice]');
+  if (!btn) return;
+  const choice = btn.dataset.themeChoice;
+  try {
+    if (choice === 'auto') localStorage.removeItem('gal_theme');
+    else localStorage.setItem('gal_theme', choice);
+  } catch {}
+  applyTheme(choice);
+});
+
+applyTheme(currentThemeChoice());
+
 // ------------------------------------------------------------- modal plumbing
 
 function openModal(m) { m.classList.remove('hidden'); }
@@ -955,7 +995,7 @@ function renderChart() {
     '<circle id="hoverDot" class="hover-dot hidden" r="4.5" />' +
     '<rect id="chartOverlay" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent" />' +
     '</svg>' +
-    '<div class="chart-legend"><span class="lg-value" style="color:' + fillColor + '">— Value</span><span>- - Invested</span></div>' +
+    '<div class="chart-legend"><span class="lg-value" style="color:' + lineColor + '">— Value</span><span>- - Invested</span></div>' +
     '<div id="chartTip" class="chart-tip hidden"></div>';
 
   attachChartHover(body);
@@ -1112,8 +1152,8 @@ function renderGainChart() {
     '<path d="' + areaPath + '" fill="url(#gainFillPos)" clip-path="url(#gainPos)" />' +
     '<path d="' + areaPath + '" fill="url(#gainFillNeg)" clip-path="url(#gainNeg)" />' +
     '<line x1="' + padL + '" y1="' + zeroY.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + zeroY.toFixed(1) + '" class="zero-line" />' +
-    '<path d="' + linePath + '" fill="none" stroke="#30d158" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainPos)" />' +
-    '<path d="' + linePath + '" fill="none" stroke="#ff453a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainNeg)" />' +
+    '<path d="' + linePath + '" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainPos)" />' +
+    '<path d="' + linePath + '" fill="none" stroke="var(--red)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#gainNeg)" />' +
     '<line id="gainCross" class="crosshair hidden" y1="' + padT + '" y2="' + (padT + plotH) + '" />' +
     '<circle id="gainDot" class="hover-dot hidden" r="4.5" />' +
     '<rect id="gainOverlay" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent" />' +

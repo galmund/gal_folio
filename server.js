@@ -694,7 +694,9 @@ const LOGIN_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>gal_folio — sign in</title>
-<meta name="theme-color" content="#000000"/>
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)"/>
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)"/>
+<meta name="color-scheme" content="dark light"/>
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48"/>
 <link rel="icon" href="/icon.svg" type="image/svg+xml"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
@@ -714,6 +716,16 @@ const LOGIN_HTML = `<!DOCTYPE html>
  button:hover{background:#3395ff}
  .err{color:#ff453a;font-size:13px;margin-top:12px;text-align:center}
  .err:empty{display:none}
+ @media (prefers-color-scheme: light){
+  body{color:#000;background:radial-gradient(60% 50% at 50% 0%,rgba(52,199,89,.16),transparent 70%),radial-gradient(40% 40% at 15% 0%,rgba(0,122,255,.1),transparent 70%),#f2f2f7}
+  .sub,label{color:rgba(60,60,67,.62)}
+  .logo img{filter:drop-shadow(0 10px 24px rgba(0,0,0,.15))}
+  form{background:rgba(255,255,255,.82);border-color:rgba(0,0,0,.08)}
+  input{background:rgba(118,118,128,.07);border-color:rgba(0,0,0,.08);color:#000}
+  input:focus{border-color:#007aff}
+  button{background:#007aff}
+  .err{color:#e5281c}
+ }
 </style></head>
 <body>
  <div class="card">
