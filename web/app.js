@@ -135,6 +135,8 @@ function updateSortIndicators() {
 
 // ------------------------------------------------------------- rendering
 
+let rowsIntroDone = false;
+
 function render() {
   const body = document.getElementById('holdingsBody');
   const empty = document.getElementById('emptyState');
@@ -150,12 +152,20 @@ function render() {
     for (const h of rows) {
       body.appendChild(renderRow(h));
     }
+    if (!rowsIntroDone && !reducedMotion.matches) {
+      rowsIntroDone = true;
+      [...body.children].slice(0, 12).forEach((tr, i) => {
+        tr.classList.add('row-in');
+        tr.style.animationDelay = i * 35 + 'ms';
+      });
+    }
   }
   updateSortIndicators();
 
   const t = computeTotals();
   document.body.dataset.trend = t.day == null ? '' : t.day >= 0 ? 'up' : 'down';
   setCard('sumValue', money(t.value), '');
+  animateTotal(t.value);
   const ilsSub = document.getElementById('sumValueIls');
   if (ilsSub) ilsSub.textContent = state.fxRate && t.value != null ? '≈ ' + ils(t.value * state.fxRate) : '';
   maybePrefillConverter();
@@ -379,9 +389,14 @@ let addNoteTimer = null;
 function showAddNote(msg) {
   const el = document.getElementById('addNote');
   el.textContent = msg;
-  el.classList.remove('hidden');
+  el.classList.remove('hidden', 'closing');
   clearTimeout(addNoteTimer);
-  addNoteTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+  addNoteTimer = setTimeout(() => {
+    el.classList.add('closing');
+    setTimeout(() => {
+      if (el.classList.contains('closing')) el.classList.add('hidden');
+    }, 260);
+  }, 4000);
 }
 
 addForm.addEventListener('submit', async (e) => {
@@ -711,7 +726,77 @@ applyTheme(currentThemeChoice());
 
 // ------------------------------------------------------------- modal plumbing
 
-function openModal(m) { m.classList.remove('hidden'); }
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const sheetQuery = matchMedia('(max-width: 620px)');
+
+// Critically damped by default; bounce only when the gesture carried momentum.
+function springTo({ from, to, velocity = 0, response = 0.4, damping = 1, onUpdate, onDone }) {
+  const k = (2 * Math.PI / response) ** 2;
+  const c = 4 * Math.PI * damping / response;
+  let x = from, v = velocity, last = performance.now(), raf = 0;
+  const step = (now) => {
+    let dt = Math.min((now - last) / 1000, 0.032);
+    last = now;
+    while (dt > 0) {
+      const h = Math.min(dt, 1 / 240);
+      v += (-k * (x - to) - c * v) * h;
+      x += v * h;
+      dt -= h;
+    }
+    if (Math.abs(x - to) < 0.3 && Math.abs(v) < 8) {
+      onUpdate(to);
+      if (onDone) onDone();
+      return;
+    }
+    onUpdate(x);
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+  return { cancel: () => cancelAnimationFrame(raf), get value() { return x; }, get velocity() { return v; } };
+}
+
+function project(velocity, rate = 0.998) {
+  return (velocity / 1000) * rate / (1 - rate);
+}
+
+function rubberband(over, dim, constant = 0.55) {
+  return (over * dim * constant) / (dim + constant * Math.abs(over));
+}
+
+// The total re-targets from whatever is on screen, so back-to-back refreshes never jump.
+let totalAnim = null;
+let totalShown = null;
+function animateTotal(target) {
+  const el = document.getElementById('sumValue');
+  if (totalAnim) totalAnim.cancel();
+  totalAnim = null;
+  if (target == null || totalShown == null || reducedMotion.matches || Math.abs(target - totalShown) < 0.005) {
+    totalShown = target;
+    return;
+  }
+  el.textContent = money(totalShown);
+  totalAnim = springTo({
+    from: totalShown,
+    to: target,
+    response: 0.6,
+    onUpdate: (v) => { totalShown = v; el.textContent = money(v); },
+    onDone: () => { totalShown = target; el.textContent = money(target); totalAnim = null; },
+  });
+}
+
+function showOverlay(m) {
+  m.classList.remove('hidden', 'closing');
+  m.style.removeProperty('--p');
+  const sheet = m.querySelector('.modal');
+  sheet.style.transform = '';
+}
+
+function openModal(m) {
+  document.querySelectorAll('.modal-overlay').forEach((o) => {
+    if (o !== m) { o.classList.add('hidden'); o.classList.remove('closing'); }
+  });
+  showOverlay(m);
+}
 
 document.querySelectorAll('[data-open-add]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -720,14 +805,133 @@ document.querySelectorAll('[data-open-add]').forEach((b) =>
     setTimeout(() => symbolInput.focus(), 50);
   })
 )
+
+function hideOverlay(o) {
+  o.classList.add('hidden');
+  o.classList.remove('closing');
+  o.style.removeProperty('--p');
+  o.querySelector('.modal').style.transform = '';
+}
+
 function closeModals() {
-  document.querySelectorAll('.modal-overlay').forEach((m) => m.classList.add('hidden'));
+  document.querySelectorAll('.modal-overlay:not(.hidden):not(.closing)').forEach((o) => {
+    if (reducedMotion.matches) { hideOverlay(o); return; }
+    o.classList.add('closing');
+    setTimeout(() => { if (o.classList.contains('closing')) hideOverlay(o); }, 320);
+  });
 }
 document.querySelectorAll('[data-close-modal]').forEach((b) => b.addEventListener('click', closeModals));
 document.querySelectorAll('.modal-overlay').forEach((overlay) => {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModals(); });
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
+
+// Phone sheets follow the finger from the grabber/title, then are thrown by release velocity.
+document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+  const sheet = overlay.querySelector('.modal');
+  const head = sheet.querySelector('.modal-head');
+  let drag = null;
+  let anim = null;
+
+  const apply = (y) => {
+    sheet.style.transform = `translateY(${y}px)`;
+    overlay.style.setProperty('--p', String(Math.max(0, 1 - Math.max(y, 0) / sheet.offsetHeight)));
+  };
+
+  head.addEventListener('pointerdown', (e) => {
+    if (!sheetQuery.matches || e.target.closest('button')) return;
+    if (anim) { anim.cancel(); anim = null; }
+    const current = new DOMMatrixReadOnly(getComputedStyle(sheet).transform).m42;
+    sheet.style.animation = 'none';
+    head.setPointerCapture(e.pointerId);
+    drag = { startY: e.clientY, base: current, y: current, samples: [{ t: e.timeStamp, y: e.clientY }] };
+    apply(current);
+  });
+
+  head.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const raw = drag.base + (e.clientY - drag.startY);
+    drag.y = raw >= 0 ? raw : -rubberband(-raw, sheet.offsetHeight);
+    drag.samples.push({ t: e.timeStamp, y: e.clientY });
+    if (drag.samples.length > 6) drag.samples.shift();
+    apply(drag.y);
+  });
+
+  const release = (e) => {
+    if (!drag) return;
+    const first = drag.samples.find((s) => e.timeStamp - s.t < 120) || drag.samples[0];
+    const dt = Math.max(e.timeStamp - first.t, 1);
+    const velocity = ((e.clientY - first.y) / dt) * 1000;
+    const height = sheet.offsetHeight;
+    const dismiss = velocity > 0 || drag.y > height * 0.3
+      ? drag.y + project(velocity) > height * 0.5
+      : false;
+    const from = drag.y;
+    drag = null;
+    anim = springTo({
+      from,
+      to: dismiss ? height : 0,
+      velocity,
+      response: dismiss ? 0.3 : 0.35,
+      damping: dismiss ? 1 : 0.8,
+      onUpdate: apply,
+      onDone: () => {
+        anim = null;
+        if (dismiss) hideOverlay(overlay);
+        sheet.style.animation = '';
+        if (!dismiss) { sheet.style.transform = ''; overlay.style.removeProperty('--p'); }
+      },
+    });
+  };
+  head.addEventListener('pointerup', release);
+  head.addEventListener('pointercancel', release);
+});
+
+function syncSegment(t) {
+  const a = t.querySelector('button.active');
+  if (!a || !t.offsetWidth) return;
+  t.style.setProperty('--x', a.offsetLeft + 'px');
+  t.style.setProperty('--w', a.offsetWidth + 'px');
+  if (!t.classList.contains('has-thumb')) {
+    t.classList.add('has-thumb');
+    requestAnimationFrame(() => t.classList.add('ready'));
+  }
+}
+document.querySelectorAll('.range-toggle').forEach((t) => {
+  syncSegment(t);
+  new MutationObserver(() => syncSegment(t)).observe(t, { attributes: true, subtree: true, attributeFilter: ['class'] });
+  new ResizeObserver(() => syncSegment(t)).observe(t);
+});
+
+document.querySelectorAll('details.foldable').forEach((d) => {
+  const summary = d.querySelector(':scope > summary');
+  let anim = null;
+  summary.addEventListener('click', (e) => {
+    if (e.target.closest('.range-toggle')) return;
+    e.preventDefault();
+    if (reducedMotion.matches) { d.open = !d.open; return; }
+    const opening = !d.open || d.dataset.closing === '1';
+    const start = d.offsetHeight;
+    if (anim) anim.cancel();
+    d.classList.add('animating');
+    d.dataset.closing = opening ? '' : '1';
+    d.open = true;
+    const end = opening ? d.scrollHeight : summary.offsetHeight + parseFloat(getComputedStyle(d).paddingTop) + parseFloat(getComputedStyle(d).paddingBottom);
+    anim = d.animate({ height: [start + 'px', end + 'px'] }, { duration: 420, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
+    anim.onfinish = () => {
+      if (!opening) d.open = false;
+      d.dataset.closing = '';
+      d.classList.remove('animating');
+      anim = null;
+    };
+    anim.oncancel = () => d.classList.remove('animating');
+  });
+});
+
+const topbar = document.querySelector('.topbar');
+const syncTopbar = () => topbar.classList.toggle('scrolled', window.scrollY > 4);
+window.addEventListener('scroll', syncTopbar, { passive: true });
+syncTopbar();
 
 document.getElementById('refreshBtn').addEventListener('click', () => {
   loadPortfolio().then(scheduleRefresh); // manual refresh restarts the clock

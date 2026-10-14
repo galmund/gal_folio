@@ -175,8 +175,10 @@ svg { overflow: visible; }
   background: var(--bar);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 0.5px solid var(--hairline);
+  border-bottom: 0.5px solid transparent;
+  transition: border-color 0.25s ease;
 }
+.topbar.scrolled { border-bottom-color: var(--hairline); }
 .brand {
   display: flex;
   align-items: center;
@@ -205,10 +207,10 @@ svg { overflow: visible; }
   color: var(--text);
   font-size: 17px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.15s var(--ease);
+  transition: background 0.15s, transform 0.4s var(--ease);
 }
 .round-btn:hover { background: var(--fill-strong); }
-.round-btn:active { transform: scale(0.92); }
+.round-btn:active { transform: scale(0.92); transition-duration: 0.1s; }
 .round-btn:disabled { opacity: 0.4; cursor: default; }
 .round-btn svg {
   width: 20px;
@@ -270,7 +272,7 @@ main {
   font-size: clamp(44px, 12vw, 68px);
   font-weight: 700;
   line-height: 1.05;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
@@ -334,6 +336,7 @@ main {
   margin-top: 4px;
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--text-dim);
 }
 .stat .card-sub {
@@ -402,6 +405,7 @@ main {
 
 /* ------------------------------------------------------------- segmented control */
 .range-toggle {
+  position: relative;
   display: inline-flex;
   padding: 2px;
   gap: 2px;
@@ -417,12 +421,28 @@ main {
   color: var(--text);
   font: 600 13px var(--font);
   cursor: pointer;
-  transition: background 0.2s var(--ease);
+  position: relative;
+  z-index: 1;
+  transition: transform 0.4s var(--ease), opacity 0.2s;
 }
-.range-toggle button.active {
+.range-toggle button:active { transform: scale(0.94); transition-duration: 0.08s; }
+.range-toggle:not(.has-thumb) button.active {
   background: var(--seg-active);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04);
 }
+.range-toggle.has-thumb::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: var(--w, 0);
+  transform: translateX(var(--x, 0));
+  border-radius: 8px;
+  background: var(--seg-active);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12), 0 3px 1px rgba(0, 0, 0, 0.04);
+}
+.range-toggle.has-thumb.ready::before { transition: transform 0.45s var(--ease), width 0.45s var(--ease); }
 
 /* ------------------------------------------------------------- allocation donut */
 .alloc-body { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; justify-content: center; }
@@ -440,6 +460,7 @@ main {
   font-variant-numeric: tabular-nums;
   cursor: default;
 }
+.legend-row { transition: background 0.15s; }
 .legend-row + .legend-row { border-top: 0.5px solid var(--separator); }
 .legend-row.active, .legend-row:hover { background: var(--fill); border-top-color: transparent; border-radius: 10px; }
 .legend-row.active + .legend-row, .legend-row:hover + .legend-row { border-top-color: transparent; }
@@ -585,10 +606,10 @@ svg#chartSvg, svg#gainSvg { display: block; max-width: 100%; }
   font: 600 15px var(--font);
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s, transform 0.15s var(--ease);
+  transition: background 0.15s, opacity 0.15s, transform 0.4s var(--ease);
 }
 .btn:hover { background: var(--fill-strong); }
-.btn:active { transform: scale(0.97); }
+.btn:active { transform: scale(0.97); transition-duration: 0.1s; }
 .btn.primary { background: var(--blue); color: #fff; }
 .btn.primary:hover { filter: brightness(1.1); }
 .btn.ghost { background: var(--fill); }
@@ -618,6 +639,7 @@ thead th {
 thead th:first-child { padding-left: 20px; }
 thead th.left { text-align: left; }
 thead th.actions-col { width: 40px; }
+thead th { letter-spacing: 0.005em; }
 thead th.sortable { cursor: pointer; user-select: none; transition: color 0.15s; }
 thead th.sortable:hover { color: var(--text); }
 thead th.active-sort { color: var(--blue); }
@@ -630,8 +652,11 @@ tbody td {
 }
 tbody td:first-child { padding-left: 20px; }
 tbody tr:last-child td { border-bottom: none; }
-#holdingsBody tr { cursor: pointer; transition: background 0.15s; }
+#holdingsBody tr { cursor: pointer; transition: background 0.4s var(--ease); }
 #holdingsBody tr:hover { background: var(--hover); }
+#holdingsBody tr:active { background: var(--fill); transition-duration: 0s; }
+.foldable > summary { transition: opacity 0.4s var(--ease); }
+.foldable > summary:active { opacity: 0.55; transition-duration: 0s; }
 td.left { text-align: left; }
 .sym-cell { display: flex; flex-direction: column; }
 .sym-cell .ticker { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
@@ -737,9 +762,11 @@ td.left { text-align: left; }
   font-size: 14px;
   font-weight: 600;
   text-align: center;
-  animation: toast-in 0.35s var(--ease);
+  animation: toast-in 0.45s var(--ease);
 }
-@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } }
+.toast.closing { animation: toast-out 0.25s var(--ease) forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px) scale(0.96); filter: blur(6px); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 12px) scale(0.96); filter: blur(6px); } }
 
 /* ------------------------------------------------------------- sheets / modals */
 .modal-overlay {
@@ -750,12 +777,14 @@ td.left { text-align: left; }
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: var(--overlay);
+  background: color-mix(in srgb, var(--overlay) calc(var(--p, 1) * 100%), transparent);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
-  animation: fade-in 0.2s ease;
+  animation: fade-in 0.25s ease;
 }
+.modal-overlay.closing { animation: fade-out 0.22s ease forwards; pointer-events: none; }
 @keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
 .modal {
   width: 100%;
   max-width: 460px;
@@ -765,15 +794,19 @@ td.left { text-align: left; }
   background: var(--sheet);
   border: 0.5px solid var(--hairline);
   box-shadow: var(--shadow);
-  animation: sheet-in 0.35s var(--ease);
+  transform-origin: 50% 100%;
+  animation: sheet-in 0.45s var(--ease);
 }
-@keyframes sheet-in { from { opacity: 0; transform: translateY(16px) scale(0.98); } }
+.modal-overlay.closing .modal { animation: sheet-out 0.22s var(--ease) forwards; }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(16px) scale(0.97); } }
+@keyframes sheet-out { to { opacity: 0; transform: translateY(16px) scale(0.97); } }
 .modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 20px 20px 4px;
+  touch-action: pan-x;
 }
 .modal-head h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
 .close-btn {
@@ -847,6 +880,10 @@ td.left { text-align: left; }
 .sell-preview .row + .row { margin-top: 6px; }
 .sell-preview b { color: var(--text); font-weight: 600; }
 
+#holdingsBody tr.row-in { animation: row-in 0.55s var(--ease) backwards; }
+@keyframes row-in { from { opacity: 0; transform: translateY(10px); } }
+.foldable.animating { overflow: hidden; }
+
 /* ------------------------------------------------------------- phones */
 @media (max-width: 620px) {
   body { font-size: 15px; }
@@ -890,8 +927,12 @@ td.left { text-align: left; }
     max-height: 92vh;
     border-radius: 24px 24px 0 0;
     border-bottom: none;
-    animation: sheet-up 0.4s var(--ease);
+    transform-origin: 50% 100%;
+    animation: sheet-up 0.5s var(--ease);
+    will-change: transform;
   }
+  .modal-overlay.closing .modal { animation: sheet-down 0.28s var(--ease) forwards; }
+  .modal-head { touch-action: none; }
   .modal::before {
     content: '';
     display: block;
@@ -997,7 +1038,28 @@ td.left { text-align: left; }
 }
 
 @keyframes sheet-up { from { transform: translateY(100%); } }
+@keyframes sheet-down { to { transform: translateY(100%); } }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  #holdingsBody tr.row-in { animation: none; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+  .spinning svg { animation-duration: 1.6s !important; }
+  .modal, .toast { animation-name: fade-in !important; animation-duration: 0.2s !important; filter: none !important; }
+  .modal-overlay.closing .modal, .toast.closing { animation-name: fade-out !important; }
+  .foldable > summary::after { transition: none !important; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar, .panel, .chart-tip, .toast, .modal-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .topbar { background: var(--bg); }
+  .panel { background: var(--card-solid); }
+  .chart-tip, .toast { background: var(--card-solid); }
+}
+
+@media (prefers-contrast: more) {
+  :root { --hairline: rgba(128, 128, 128, 0.7); --text-dim: color-mix(in srgb, var(--text) 80%, transparent); }
+  .panel { background: var(--card-solid); }
 }
