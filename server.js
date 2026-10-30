@@ -40,6 +40,7 @@ const DEFAULT_DATA = {
   holdings: [],
   history: [], // daily value snapshots: { date, value, cost, realized }
   realized: [], // completed sales: { id, date, symbol, shares, price, cost, proceeds, gain }
+  espp: null, // { plan, period, lots } — see sanitizeEspp
 };
 
 // ---------------------------------------------------------------- data store
@@ -50,6 +51,7 @@ function normalize(d) {
     holdings: Array.isArray(d && d.holdings) ? d.holdings : [],
     history: Array.isArray(d && d.history) ? d.history : [],
     realized: Array.isArray(d && d.realized) ? d.realized : [],
+    espp: d && d.espp ? sanitizeEspp(d.espp) : null,
   };
 }
 
@@ -198,14 +200,118 @@ function realizedTotal(data) {
   return Math.round(t * 100) / 100;
 }
 
+// ---------------------------------------------------------------------- espp
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const isDate = (v) => DATE_RE.test(String(v || ''));
+const round2 = (n) => Math.round(n * 100) / 100;
+
+function addMonths(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1));
+  const dim = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, dim));
+  return first.toISOString().slice(0, 10);
+}
+
+function sanitizeEspp(e) {
+  const p = (e && e.plan) || {};
+  const per = (e && e.period) || {};
+  const numOr = (v, def) => (v != null && v !== '' && isFinite(Number(v)) ? Number(v) : def);
+  const start = isDate(per.start) ? per.start : todayStr();
+  return {
+    plan: {
+      symbol: String(p.symbol || 'NICE').trim().toUpperCase(),
+      name: String(p.name || '').trim(),
+      discount: Math.min(Math.max(numOr(p.discount, 15), 0), 100),
+      lookback: p.lookback !== false,
+      contribution: Math.max(numOr(p.contribution, 0), 0),
+      payday: Math.min(Math.max(Math.round(numOr(p.payday, 10)), 1), 31),
+      periodMonths: Math.max(Math.round(numOr(p.periodMonths, 6)), 1),
+      holdMonths: Math.max(Math.round(numOr(p.holdMonths, 24)), 0),
+    },
+    period: {
+      start,
+      end: isDate(per.end) && per.end > start ? per.end : addMonths(start, 6),
+      startPrice: numOr(per.startPrice, null) > 0 ? Number(per.startPrice) : null,
+      override: per.override != null && per.override !== '' && Number(per.override) >= 0 ? Number(per.override) : null,
+      carryUsd: Math.max(numOr(per.carryUsd, 0), 0),
+    },
+    lots: Array.isArray(e && e.lots)
+      ? e.lots
+          .filter((l) => l && isDate(l.date) && Number(l.shares) > 0 && Number(l.price) >= 0)
+          .map((l) => ({
+            id: (l.id && String(l.id)) || genId(),
+            date: l.date,
+            shares: Number(l.shares),
+            price: Number(l.price),
+            fmv: Number(l.fmv) > 0 ? Number(l.fmv) : Number(l.price),
+            sellableFrom: isDate(l.sellableFrom) ? l.sellableFrom : l.date,
+          }))
+      : [],
+  };
+}
+
+// Paydays (as dates) that fall inside the offering period.
+function periodPaydays(espp) {
+  const { start, end } = espp.period;
+  const out = [];
+  let [y, m] = start.split('-').map(Number);
+  for (let i = 0; i < 240; i++) {
+    const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const d = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(espp.plan.payday, dim)).padStart(2, '0')}`;
+    if (d >= end) break;
+    if (d >= start) out.push(d);
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+// What's sitting in the plan right now, plus where it's heading by purchase day.
+function esppStatus(espp, usdIls) {
+  if (!espp) return null;
+  const today = todayStr();
+  const paydays = periodPaydays(espp);
+  const paid = paydays.filter((d) => d <= today).length;
+  const autoIls = paid * espp.plan.contribution;
+  const contributedIls = espp.period.override != null ? espp.period.override : autoIls;
+  const projectedIls = contributedIls + (paydays.length - paid) * espp.plan.contribution;
+  const fx = usdIls > 0 ? usdIls : null;
+  return {
+    today,
+    fx,
+    paydaysTotal: paydays.length,
+    paydaysPaid: paid,
+    nextPayday: paydays.find((d) => d > today) || null,
+    autoIls,
+    contributedIls: round2(contributedIls),
+    projectedIls: round2(projectedIls),
+    pendingUsd: fx ? round2(contributedIls / fx + espp.period.carryUsd) : null,
+    projectedUsd: fx ? round2(projectedIls / fx + espp.period.carryUsd) : null,
+    purchaseDue: today >= espp.period.end,
+  };
+}
+
+async function liveUsdIls(data) {
+  try {
+    return (await getFxRate('USD', 'ILS')).rate;
+  } catch {
+    return Number(data.settings.usdIls) || null;
+  }
+}
+
 // Record (or update) today's portfolio-value snapshot. We only count holdings
 // that have a live quote, so `value` and `cost` stay comparable. One point per
 // calendar day — repeated refreshes just update today's latest value.
-function recordSnapshot(data, quotes) {
+function recordSnapshot(data, quotes, esppNow) {
   let value = 0;
   let cost = 0;
   let valued = false;
-  for (const h of data.holdings) {
+  const positions = data.holdings.map((h) => ({ symbol: h.symbol, shares: h.shares, cost: h.cost }));
+  if (data.espp) {
+    for (const l of data.espp.lots) positions.push({ symbol: data.espp.plan.symbol, shares: l.shares, cost: l.price });
+  }
+  for (const h of positions) {
     const q = quotes[h.symbol];
     if (q && q.price) {
       value += q.price * h.shares;
@@ -213,14 +319,19 @@ function recordSnapshot(data, quotes) {
       valued = true;
     }
   }
+  // Cash waiting in the ESPP counts at face value on both sides, so it lifts
+  // the value line without showing up as profit.
+  if (valued && esppNow && esppNow.pendingUsd) {
+    value += esppNow.pendingUsd;
+    cost += esppNow.pendingUsd;
+  }
   if (!valued) {
     // Nothing got priced. If holdings exist, that's a feed problem and writing
     // a zero would punch a hole in the chart. But a genuinely empty portfolio
     // with past sales still has a story to tell, so let that one through.
-    if (data.holdings.length || !data.realized.length) return false;
+    if (positions.length || !data.realized.length) return false;
   }
 
-  const round2 = (n) => Math.round(n * 100) / 100;
   // `realized` is cumulative to date, so the profit curve stays continuous
   // across a sale instead of dropping by whatever you just cashed out.
   const entry = {
@@ -755,19 +866,24 @@ async function handleApi(req, res, url, pathname, method) {
     const apiKey = effectiveKey(snapshot);
     // Prices no longer need the Finnhub key — the extended-hours source is
     // key-less — so quote every holding regardless of whether one is set.
-    const { quotes, errors } = await getQuotes(
-      snapshot.holdings.map((h) => h.symbol),
-      apiKey
-    );
+    const symbols = snapshot.holdings.map((h) => h.symbol);
+    if (snapshot.espp) symbols.push(snapshot.espp.plan.symbol);
+    const [{ quotes, errors }, usdIls] = await Promise.all([
+      getQuotes(symbols, apiKey),
+      snapshot.espp ? liveUsdIls(snapshot) : null,
+    ]);
     // Quoting just took a network round trip. Re-read under the lock so a sell
     // or edit that landed meanwhile isn't overwritten, and so we report what's
     // actually on disk now.
+    let esppNow = null;
     const data = await withData(async (d) => {
-      if (recordSnapshot(d, quotes)) await saveData(d);
+      esppNow = esppStatus(d.espp, usdIls);
+      if (recordSnapshot(d, quotes, esppNow)) await saveData(d);
       return d;
     });
     return sendJson(res, 200, {
       holdings: data.holdings,
+      espp: data.espp ? { ...data.espp, status: esppNow } : null,
       quotes,
       errors,
       history: data.history,
@@ -839,7 +955,6 @@ async function handleApi(req, res, url, pathname, method) {
     }
     if (!(price >= 0)) return { status: 400, body: { error: 'Enter the price you sold at.' } };
 
-    const round2 = (n) => Math.round(n * 100) / 100;
     const sale = {
       id: genId(),
       date: /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || '')) ? body.date : todayStr(),
@@ -901,6 +1016,116 @@ async function handleApi(req, res, url, pathname, method) {
     return null; // method not handled here — fall through below
     });
     if (out) return sendJson(res, out.status, out.body);
+  }
+
+  // ESPP: set up or edit the plan and the current offering period
+  if (method === 'PUT' && pathname === '/api/espp') {
+    const body = await readBody(req);
+    const out = await withData(async (data) => {
+      const cur = data.espp || { plan: {}, period: {}, lots: [] };
+      data.espp = sanitizeEspp({
+        plan: { ...cur.plan, ...(body.plan || {}) },
+        period: { ...cur.period, ...(body.period || {}) },
+        lots: cur.lots,
+      });
+      if (!data.espp.plan.name) {
+        const apiKey = effectiveKey(data);
+        if (apiKey) data.espp.plan.name = await getName(data.espp.plan.symbol, apiKey);
+      }
+      await saveData(data);
+      return data.espp;
+    });
+    return sendJson(res, 200, out);
+  }
+
+  if (method === 'DELETE' && pathname === '/api/espp') {
+    const out = await withData(async (data) => {
+      if (data.espp && data.espp.lots.length) {
+        return { status: 400, body: { error: 'Sell or delete the ESPP lots first.' } };
+      }
+      data.espp = null;
+      await saveData(data);
+      return { status: 200, body: { ok: true } };
+    });
+    return sendJson(res, out.status, out.body);
+  }
+
+  // Purchase day: book what the plan actually bought, then roll the period on.
+  if (method === 'POST' && pathname === '/api/espp/purchase') {
+    const body = await readBody(req);
+    const shares = Number(body.shares);
+    const price = Number(body.price);
+    const fmv = Number(body.fmv);
+    const leftover = Math.max(Number(body.leftoverUsd) || 0, 0);
+    if (!(shares > 0) || !(price > 0) || !(fmv > 0)) {
+      return sendJson(res, 400, { error: 'Enter shares, the price you paid and the market price that day.' });
+    }
+    const out = await withData(async (data) => {
+      const e = data.espp;
+      if (!e) return { status: 400, body: { error: 'No ESPP plan set up.' } };
+      const date = isDate(body.date) ? body.date : e.period.end;
+      const lot = { id: genId(), date, shares, price, fmv, sellableFrom: addMonths(date, e.plan.holdMonths) };
+      e.lots.push(lot);
+      e.period = {
+        start: e.period.end,
+        end: addMonths(e.period.end, e.plan.periodMonths),
+        startPrice: Number(body.nextStartPrice) > 0 ? Number(body.nextStartPrice) : fmv,
+        override: null,
+        carryUsd: body.carry === false ? 0 : round2(leftover),
+      };
+      await saveData(data);
+      return { status: 200, body: { ok: true, lot, period: e.period } };
+    });
+    return sendJson(res, out.status, out.body);
+  }
+
+  const lotSellMatch = pathname.match(/^\/api\/espp\/lots\/([^/]+)\/sell$/);
+  if (lotSellMatch && method === 'POST') {
+    const id = decodeURIComponent(lotSellMatch[1]);
+    const body = await readBody(req);
+    const out = await withData(async (data) => {
+      const e = data.espp;
+      const lot = e && e.lots.find((l) => l.id === id);
+      if (!lot) return { status: 404, body: { error: 'Lot not found' } };
+      const shares = Number(body.shares);
+      const price = Number(body.price);
+      if (!(shares > 0)) return { status: 400, body: { error: 'Enter how many shares you sold.' } };
+      if (shares > lot.shares + 1e-9) {
+        return { status: 400, body: { error: `This lot only has ${trimShares(lot.shares)} shares.` } };
+      }
+      if (!(price >= 0)) return { status: 400, body: { error: 'Enter the price you sold at.' } };
+      const sale = {
+        id: genId(),
+        date: isDate(body.date) ? body.date : todayStr(),
+        symbol: e.plan.symbol,
+        name: 'ESPP · bought ' + lot.date,
+        shares,
+        price,
+        cost: lot.price,
+        proceeds: round2(price * shares),
+        gain: round2((price - lot.price) * shares),
+      };
+      data.realized.push(sale);
+      const left = lot.shares - shares;
+      if (left <= 1e-9) e.lots = e.lots.filter((l) => l.id !== id);
+      else lot.shares = Math.round(left * 1e6) / 1e6;
+      await saveData(data);
+      return { status: 200, body: { ok: true, sale } };
+    });
+    return sendJson(res, out.status, out.body);
+  }
+
+  const lotMatch = pathname.match(/^\/api\/espp\/lots\/([^/]+)$/);
+  if (lotMatch && method === 'DELETE') {
+    const id = decodeURIComponent(lotMatch[1]);
+    const out = await withData(async (data) => {
+      const e = data.espp;
+      if (!e || !e.lots.some((l) => l.id === id)) return { status: 404, body: { error: 'Lot not found' } };
+      e.lots = e.lots.filter((l) => l.id !== id);
+      await saveData(data);
+      return { status: 200, body: { ok: true } };
+    });
+    return sendJson(res, out.status, out.body);
   }
 
   // Single quote (used by the add form preview)
@@ -987,10 +1212,11 @@ async function handleApi(req, res, url, pathname, method) {
           }))
       : [];
     const settings = { ...DEFAULT_DATA.settings, ...(body.settings && typeof body.settings === 'object' ? body.settings : {}) };
+    const espp = body.espp && typeof body.espp === 'object' ? sanitizeEspp(body.espp) : null;
 
     await withData(async () => {
       await backupCurrent(); // safety backup (file .bak or Upstash :bak key)
-      await saveData({ settings, holdings, history, realized });
+      await saveData({ settings, holdings, history, realized, espp });
     });
     quoteCache.clear();
     return sendJson(res, 200, {

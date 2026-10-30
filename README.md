@@ -58,6 +58,19 @@ Finnhub by your local server — it never goes anywhere else.
   hours and after hours; once the market is fully closed it eases off to every 5
   minutes. Re-opening the app refreshes immediately, and ↻ forces it any time.
 
+- **ESPP** — ⚙ Settings → **Set up ESPP…**. Enter the plan once (ticker,
+  discount, lookback, monthly ₪ contribution, payday, offering start and
+  purchase dates, holding period). The ESPP card at the bottom of the page then shows the money built up
+  in the plan, the paydays so far, and a live estimate of what it buys at
+  today's price and USD/ILS rate. Add the offering-start price (✎ on the card)
+  so the lookback can use it. On purchase day, **Confirm purchase…** books the
+  actual numbers from the plan statement as a lot. Leftover cash carries into
+  the next period, which rolls forward on its own. ESPP lots appear as one
+  `ESPP` row in Holdings; tap it to see each lot with its *sellable from* date,
+  and tap a lot to sell from it. Money waiting in the plan counts toward Total
+  value and Invested at face value. The estimated discount gain stays in the
+  ESPP card until the shares are actually bought.
+
 The summary cards show your total value, today's move, total gain/loss, and how
 much you've invested.
 

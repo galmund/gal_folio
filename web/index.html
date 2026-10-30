@@ -210,6 +210,20 @@
         <tbody id="salesBody"></tbody>
       </table>
     </details>
+
+    <!-- ESPP: money building up in the plan and what it's on track to buy -->
+    <section class="panel espp-panel hidden" id="esppPanel">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">ESPP</h2>
+          <div class="espp-period" id="esppPeriod"></div>
+        </div>
+        <button type="button" class="round-btn small" id="esppEditBtn" title="ESPP plan settings" aria-label="ESPP plan settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>
+        </button>
+      </div>
+      <div id="esppBody"></div>
+    </section>
   </main>
 
   <div id="addNote" class="toast hidden" role="status"></div>
@@ -288,6 +302,10 @@
         <input id="usdIlsInput" type="number" step="any" min="0" placeholder="3.70" />
         <p class="hint">Used for the shekel converter. The app tries to fetch a live rate automatically; if your network blocks it, this manual value is used. Update it whenever you like.</p>
 
+        <label class="modal-label">Employee stock purchase plan</label>
+        <button class="btn ghost" id="esppSetupBtn" type="button">Set up ESPP…</button>
+        <p class="hint">Track payroll contributions, a live estimate of what they'll buy, and each purchase as its own lot.</p>
+
         <label class="modal-label">Backup &amp; restore</label>
         <div class="io-row">
           <a class="btn ghost" id="exportBtn" href="/api/export" download>Export data</a>
@@ -349,6 +367,163 @@
         <div class="spacer"></div>
         <button class="btn ghost" data-close-modal>Cancel</button>
         <button class="btn primary" id="confirmSellBtn">Record sale</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESPP plan settings -->
+  <div class="modal-overlay hidden" id="esppModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>ESPP plan</h2>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="esppSymbol">Ticker</label>
+            <input id="esppSymbol" type="text" spellcheck="false" autocapitalize="characters" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="esppDiscount">Discount %</label>
+            <input id="esppDiscount" type="number" step="any" min="0" max="100" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="esppContribution">Contribution / month (₪)</label>
+            <input id="esppContribution" type="number" step="any" min="0" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="esppPayday">Payday (day of month)</label>
+            <input id="esppPayday" type="number" step="1" min="1" max="31" inputmode="numeric" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="esppStart">Offering start</label>
+            <input id="esppStart" type="date" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="esppEnd">Purchase date</label>
+            <input id="esppEnd" type="date" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="esppLookback">Lookback</label>
+            <select id="esppLookback">
+              <option value="1">Yes — lower of start / purchase price</option>
+              <option value="0">No — purchase-date price</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="modal-label" for="esppStartPrice">Offering-start price ($)</label>
+            <input id="esppStartPrice" type="number" step="any" min="0" inputmode="decimal" placeholder="Enter on start day" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="esppHold">Holding period (months)</label>
+            <input id="esppHold" type="number" step="1" min="0" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="esppOverride">Contributed so far (₪)</label>
+            <input id="esppOverride" type="number" step="any" min="0" inputmode="decimal" placeholder="Auto" />
+          </div>
+        </div>
+        <label class="modal-label" for="esppCarry">Carried over from last purchase ($)</label>
+        <input id="esppCarry" type="number" step="any" min="0" inputmode="decimal" />
+        <p class="hint">“Contributed so far” is worked out from your monthly contribution and payday. Fill it in only when your payslip says otherwise; clear it to go back to automatic.</p>
+        <div id="esppError" class="form-error hidden"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn danger-ghost hidden" id="esppRemoveBtn">Remove plan</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn primary" id="esppSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESPP purchase confirmation -->
+  <div class="modal-overlay hidden" id="purchaseModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Confirm purchase</h2>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" style="margin-top:0">Prefilled from the estimate — correct it from the plan statement.</p>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="buyDate">Purchase date</label>
+            <input id="buyDate" type="date" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="buyShares">Shares bought</label>
+            <input id="buyShares" type="number" step="any" min="0" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="buyPrice">Price paid / share ($)</label>
+            <input id="buyPrice" type="number" step="any" min="0" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="buyFmv">Market price that day ($)</label>
+            <input id="buyFmv" type="number" step="any" min="0" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="modal-label" for="buyLeftover">Leftover cash ($)</label>
+            <input id="buyLeftover" type="number" step="any" min="0" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label class="modal-label" for="buyCarry">Leftover goes</label>
+            <select id="buyCarry">
+              <option value="1">Into the next period</option>
+              <option value="0">Refunded to me</option>
+            </select>
+          </div>
+        </div>
+        <label class="modal-label" for="buyNextStart">Next period's start price ($)</label>
+        <input id="buyNextStart" type="number" step="any" min="0" inputmode="decimal" />
+        <div class="sell-preview" id="buyPreview"></div>
+        <div id="buyError" class="form-error hidden"></div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn primary" id="confirmBuyBtn">Book purchase</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESPP lot: details and per-lot sale -->
+  <div class="modal-overlay hidden" id="lotModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="lotTitle">ESPP lot</h2>
+        <button class="close-btn" data-close-modal aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="lotId" />
+        <div class="sell-preview" id="lotInfo" style="margin-top:4px"></div>
+        <label class="modal-label">Shares to sell <span class="modal-hint" id="lotHeld"></span></label>
+        <input id="lotShares" type="number" step="any" min="0" />
+        <label class="modal-label">Price per share <span class="modal-hint" id="lotPriceHint"></span></label>
+        <input id="lotPrice" type="number" step="any" min="0" />
+        <div id="lotWarn" class="espp-warn hidden"></div>
+        <div class="sell-preview" id="lotPreview"></div>
+        <div id="lotError" class="form-error hidden"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn danger-ghost" id="deleteLotBtn">Delete lot</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" data-close-modal>Cancel</button>
+        <button class="btn primary" id="confirmLotSellBtn">Record sale</button>
       </div>
     </div>
   </div>

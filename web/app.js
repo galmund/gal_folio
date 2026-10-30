@@ -7,6 +7,7 @@ const state = {
   history: [],
   realized: [], // completed sales
   realizedTotal: 0,
+  espp: null, // { plan, period, lots, status }
   market: null, // { state: 'PRE'|'REGULAR'|'POST'|'CLOSED', label }
   currency: 'USD',
   hasApiKey: false,
@@ -65,7 +66,7 @@ function computeRow(h) {
 
 function computeTotals() {
   let value = 0, costAll = 0, costValued = 0, day = 0, anyValued = false;
-  for (const h of state.holdings) {
+  for (const h of allHoldings()) {
     const r = computeRow(h);
     costAll += r.totalCost;
     if (r.marketValue != null) {
@@ -79,7 +80,17 @@ function computeTotals() {
   const gainPct = costValued > 0 ? (gain / costValued) * 100 : null;
   const prevValue = value - day;
   const dayPct = prevValue > 0 ? (day / prevValue) * 100 : null;
-  return { value: anyValued ? value : null, costAll, gain, gainPct, day: anyValued ? day : null, dayPct };
+  // ESPP cash counts at face value in worth and invested, never as gain.
+  const cash = esppCash();
+  const dayKnown = anyValued;
+  if (cash && cash.now > 0) {
+    costAll += cash.now;
+    if (anyValued || !allHoldings().length) {
+      value += cash.now;
+      anyValued = true;
+    }
+  }
+  return { value: anyValued ? value : null, costAll, gain, gainPct, day: dayKnown ? day : null, dayPct };
 }
 
 // ------------------------------------------------------------- sorting
@@ -142,15 +153,21 @@ function render() {
   const empty = document.getElementById('emptyState');
   body.innerHTML = '';
 
-  if (state.holdings.length === 0) {
+  const holdings = allHoldings();
+  if (holdings.length === 0) {
     empty.classList.remove('hidden');
   } else {
     empty.classList.add('hidden');
     const rows = sortKey
-      ? [...state.holdings].sort((a, b) => compareHoldings(a, b, sortKey, sortDir))
-      : state.holdings;
+      ? [...holdings].sort((a, b) => compareHoldings(a, b, sortKey, sortDir))
+      : holdings;
     for (const h of rows) {
       body.appendChild(renderRow(h));
+      if (h.espp && esppExpanded) {
+        for (const lot of [...state.espp.lots].sort((a, b) => a.date.localeCompare(b.date))) {
+          body.appendChild(renderLotRow(lot));
+        }
+      }
     }
     if (!rowsIntroDone && !reducedMotion.matches) {
       rowsIntroDone = true;
@@ -186,6 +203,7 @@ function render() {
   setCard('sumCost', money(t.costAll), '');
 
   renderBanner();
+  renderEspp();
   renderSales();
   renderAllocation();
   renderChart();
@@ -242,7 +260,7 @@ function renderRow(h) {
   tr.innerHTML = `
     <td class="left">
       <div class="sym-cell">
-        <span class="ticker">${escapeHtml(h.symbol)}</span>
+        <span class="ticker">${escapeHtml(h.symbol)}${h.espp ? ' <span class="espp-badge">ESPP</span>' : ''}</span>
         <span class="name">${escapeHtml(h.name || '')}</span>
       </div>
     </td>
@@ -253,9 +271,17 @@ function renderRow(h) {
     <td class="num" data-label="Today's G/L">${todayGlCell}</td>
     <td class="num" data-label="Value">${r.marketValue != null ? money(r.marketValue) : '—'}</td>
     <td class="num" data-label="Gain / loss">${glCell}</td>
-    <td class="actions-col"><span class="row-menu" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></td>
+    <td class="actions-col"><span class="row-menu${h.espp && esppExpanded ? ' open' : ''}" title="${h.espp ? 'Show lots' : 'Edit'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></td>
   `;
-  tr.addEventListener('click', () => openEdit(h));
+  if (h.espp) {
+    tr.classList.add('espp-row');
+    tr.addEventListener('click', () => {
+      esppExpanded = !esppExpanded;
+      render();
+    });
+  } else {
+    tr.addEventListener('click', () => openEdit(h));
+  }
   return tr;
 }
 
@@ -334,6 +360,7 @@ async function loadPortfolio() {
     state.history = data.history || [];
     state.realized = data.realized || [];
     state.realizedTotal = data.realizedTotal || 0;
+    state.espp = data.espp || null;
     state.market = data.market || null;
     state.currency = data.settings.currency || 'USD';
     state.hasApiKey = data.settings.hasApiKey;
@@ -607,6 +634,405 @@ function showSellError(msg) {
   err.textContent = msg;
   err.classList.remove('hidden');
 }
+
+// ------------------------------------------------------------- espp
+
+let esppExpanded = false;
+
+const ESPP_DEFAULTS = {
+  plan: { symbol: 'NICE', discount: 15, lookback: true, contribution: 4500, payday: 10, periodMonths: 6, holdMonths: 24 },
+  period: { start: '2026-11-01', end: '2027-05-01', startPrice: null, override: null, carryUsd: 0 },
+};
+
+// All ESPP lots roll up into one holdings row; the lots show when it's expanded.
+function esppHolding() {
+  const e = state.espp;
+  if (!e || !e.lots.length) return null;
+  const shares = e.lots.reduce((t, l) => t + l.shares, 0);
+  const paid = e.lots.reduce((t, l) => t + l.shares * l.price, 0);
+  const n = e.lots.length;
+  return {
+    id: '__espp',
+    espp: true,
+    symbol: e.plan.symbol,
+    name: `${n} purchase${n === 1 ? '' : 's'} · tap for lots`,
+    shares: Math.round(shares * 1e6) / 1e6,
+    cost: shares > 0 ? paid / shares : 0,
+  };
+}
+
+function allHoldings() {
+  const x = esppHolding();
+  return x ? [...state.holdings, x] : state.holdings;
+}
+
+// Uninvested money in the plan, in USD at the current rate.
+function esppCash() {
+  const st = state.espp && state.espp.status;
+  if (!st) return null;
+  const fx = state.fxRate || st.fx;
+  if (!fx) return null;
+  const carry = state.espp.period.carryUsd || 0;
+  return { fx, now: st.contributedIls / fx + carry, atPurchase: st.projectedIls / fx + carry };
+}
+
+// What `usd` would buy if purchase day were today.
+function esppEstimate(usd) {
+  const e = state.espp;
+  const q = e && state.quotes[e.plan.symbol];
+  if (!q || !q.price || !(usd > 0)) return null;
+  const sp = e.period.startPrice;
+  const ref = e.plan.lookback && sp ? Math.min(sp, q.price) : q.price;
+  const buy = ref * (1 - e.plan.discount / 100);
+  const shares = Math.floor(usd / buy);
+  const cost = shares * buy;
+  const value = shares * q.price;
+  return { price: q.price, ref, buy, shares, cost, value, gain: value - cost, leftover: usd - cost };
+}
+
+function fmtDateY(dateStr) {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function daysUntil(dateStr) {
+  return Math.round((new Date(dateStr + 'T00:00:00') - new Date(ymd(new Date()) + 'T00:00:00')) / 86400000);
+}
+
+function renderLotRow(lot) {
+  const r = computeRow({ symbol: state.espp.plan.symbol, shares: lot.shares, cost: lot.price });
+  const sellable = lot.sellableFrom <= ymd(new Date());
+  const tr = document.createElement('tr');
+  tr.className = 'lot-row';
+  tr.innerHTML = `
+    <td class="left">
+      <div class="sym-cell">
+        <span class="ticker">Bought ${escapeHtml(fmtDateY(lot.date))}</span>
+        <span class="name ${sellable ? 'pos' : ''}">${sellable ? 'Sellable now' : 'Sellable from ' + escapeHtml(fmtDateY(lot.sellableFrom))}</span>
+      </div>
+    </td>
+    <td class="num" data-label="Shares">${trimNum(lot.shares)}</td>
+    <td class="num" data-label="Paid">${money(lot.price)}</td>
+    <td class="num" data-label="Price">${r.price != null ? money(r.price) : '—'}</td>
+    <td class="num" data-label="Today">${r.q && r.price != null ? `<span class="${signClass(r.q.change)}">${money(r.q.change, { sign: true })}<br><span class="pct">${pct(r.q.changePercent)}</span></span>` : '—'}</td>
+    <td class="num" data-label="Today's G/L">${r.dayChange != null ? `<span class="${signClass(r.dayChange)}">${money(r.dayChange, { sign: true })}</span>` : '—'}</td>
+    <td class="num" data-label="Value">${r.marketValue != null ? money(r.marketValue) : '—'}</td>
+    <td class="num" data-label="Gain / loss">${
+      r.gain != null
+        ? `<div class="gl-cell"><span class="${signClass(r.gain)}">${money(r.gain, { sign: true })}</span><span class="pct ${signClass(r.gain)}">${pct(r.gainPct)}</span></div>`
+        : '—'
+    }</td>
+    <td class="actions-col"><span class="row-menu" title="Sell"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></td>
+  `;
+  tr.addEventListener('click', () => openLot(lot));
+  return tr;
+}
+
+function renderEspp() {
+  const panel = document.getElementById('esppPanel');
+  const e = state.espp;
+  document.getElementById('esppSetupBtn').textContent = e ? 'Edit ESPP plan…' : 'Set up ESPP…';
+  panel.classList.toggle('hidden', !e);
+  if (!e) return;
+
+  const st = e.status || {};
+  const cash = esppCash();
+  const days = daysUntil(e.period.end);
+  const started = daysUntil(e.period.start) <= 0;
+  document.getElementById('esppPeriod').textContent =
+    `${e.plan.symbol} · ${fmtDateY(e.period.start)} → ${fmtDateY(e.period.end)} · ${e.plan.discount}% off${e.plan.lookback ? ', lookback' : ''}`;
+
+  const usd = (n) => (n == null ? '—' : money(n));
+  const now = cash ? esppEstimate(cash.now) : null;
+  const end = cash ? esppEstimate(cash.atPurchase) : null;
+  const q = state.quotes[e.plan.symbol];
+
+  const countdown = st.purchaseDue
+    ? '<span class="pos">Purchase day reached</span>'
+    : !started
+      ? `Starts in ${daysUntil(e.period.start)} day${daysUntil(e.period.start) === 1 ? '' : 's'}`
+      : `${days} day${days === 1 ? '' : 's'} to go`;
+
+  const estRows = (est, label) =>
+    est
+      ? `<div class="row"><span>${label}</span><b>~${trimNum(est.shares)} shares</b></div>` +
+        `<div class="row"><span>Worth at today's price</span><b>${money(est.value)}</b></div>` +
+        `<div class="row"><span>Built-in gain</span><b class="${signClass(est.gain)}">${money(est.gain, { sign: true })}</b></div>`
+      : '';
+
+  let estimate;
+  if (!q || !q.price) {
+    estimate = `<span class="muted">Waiting for a ${escapeHtml(e.plan.symbol)} price to run the estimate.</span>`;
+  } else if (!cash) {
+    estimate = '<span class="muted">Needs a USD → ILS rate (⚙ Settings) to run the estimate.</span>';
+  } else {
+    const ref = end || now;
+    estimate =
+      (ref
+        ? `<div class="row"><span>Buy price ${e.plan.lookback && e.period.startPrice ? `(${100 - e.plan.discount}% of lower of ${money(e.period.startPrice)} / ${money(q.price)})` : `(${100 - e.plan.discount}% of ${money(q.price)})`}</span><b>${money(ref.buy)}</b></div>`
+        : '') +
+      (now && now.shares > 0 && st.projectedIls > st.contributedIls
+        ? estRows(now, 'With the money in now') + '<div class="espp-sep"></div>'
+        : '') +
+      (end ? estRows(end, `By purchase day (${ils(st.projectedIls)})`) : '');
+  }
+
+  const hints = [];
+  if (e.plan.lookback && !e.period.startPrice) {
+    hints.push(`Add the ${escapeHtml(e.plan.symbol)} price on ${fmtDateY(e.period.start)} (✎) so the lookback can use it.`);
+  }
+  hints.push('An estimate at today\'s price and exchange rate — both will move by purchase day.');
+
+  document.getElementById('esppBody').innerHTML = `
+    <div class="espp-stats">
+      <div class="espp-stat">
+        <div class="espp-stat-label">In the plan</div>
+        <div class="espp-stat-value">${ils(st.contributedIls)}</div>
+        <div class="espp-stat-sub">${cash ? '≈ ' + usd(cash.now) : ''}${e.period.carryUsd ? ` · incl. ${money(e.period.carryUsd)} carried` : ''}</div>
+      </div>
+      <div class="espp-stat">
+        <div class="espp-stat-label">Purchase</div>
+        <div class="espp-stat-value">${escapeHtml(fmtDate(e.period.end))}</div>
+        <div class="espp-stat-sub">${countdown}</div>
+      </div>
+      <div class="espp-stat">
+        <div class="espp-stat-label">Paydays</div>
+        <div class="espp-stat-value">${st.paydaysPaid || 0} / ${st.paydaysTotal || 0}</div>
+        <div class="espp-stat-sub">${e.period.override != null ? 'set by hand' : st.nextPayday ? 'next ' + escapeHtml(fmtDate(st.nextPayday)) : ''}</div>
+      </div>
+    </div>
+    <div class="sell-preview espp-estimate"><div class="espp-est-head">Estimate</div>${estimate}</div>
+    ${st.purchaseDue ? '<button type="button" class="btn primary espp-confirm" id="esppConfirmBtn">Confirm purchase…</button>' : ''}
+    <p class="hint">${hints.join(' ')}</p>
+  `;
+  const confirmBtn = document.getElementById('esppConfirmBtn');
+  if (confirmBtn) confirmBtn.addEventListener('click', openPurchase);
+}
+
+// ---- plan settings
+
+const esppModal = document.getElementById('esppModal');
+
+function openEsppPlan() {
+  const e = state.espp || ESPP_DEFAULTS;
+  const v = (id, x) => (document.getElementById(id).value = x == null ? '' : x);
+  v('esppSymbol', e.plan.symbol);
+  v('esppDiscount', e.plan.discount);
+  v('esppContribution', e.plan.contribution);
+  v('esppPayday', e.plan.payday);
+  v('esppStart', e.period.start);
+  v('esppEnd', e.period.end);
+  v('esppLookback', e.plan.lookback ? '1' : '0');
+  v('esppStartPrice', e.period.startPrice);
+  v('esppHold', e.plan.holdMonths);
+  v('esppOverride', e.period.override);
+  v('esppCarry', e.period.carryUsd || 0);
+  document.getElementById('esppRemoveBtn').classList.toggle('hidden', !state.espp);
+  document.getElementById('esppError').classList.add('hidden');
+  openModal(esppModal);
+}
+
+document.getElementById('esppEditBtn').addEventListener('click', openEsppPlan);
+document.getElementById('esppSetupBtn').addEventListener('click', openEsppPlan);
+
+function showFormError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+document.getElementById('esppSaveBtn').addEventListener('click', async () => {
+  const g = (id) => document.getElementById(id).value.trim();
+  const start = g('esppStart');
+  const end = g('esppEnd');
+  if (!start || !end || end <= start) return showFormError('esppError', 'The purchase date has to come after the offering start.');
+  if (!g('esppSymbol')) return showFormError('esppError', 'Enter the ticker.');
+  const res = await fetch('/api/espp', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      plan: {
+        symbol: g('esppSymbol'),
+        discount: g('esppDiscount'),
+        lookback: g('esppLookback') === '1',
+        contribution: g('esppContribution'),
+        payday: g('esppPayday'),
+        holdMonths: g('esppHold'),
+      },
+      period: {
+        start,
+        end,
+        startPrice: g('esppStartPrice') || null,
+        override: g('esppOverride') === '' ? null : g('esppOverride'),
+        carryUsd: g('esppCarry') || 0,
+      },
+    }),
+  });
+  if (!res.ok) return showFormError('esppError', (await res.json().catch(() => ({}))).error || 'Could not save the plan.');
+  closeModals();
+  await loadPortfolio();
+});
+
+document.getElementById('esppRemoveBtn').addEventListener('click', async () => {
+  if (!confirm('Remove the ESPP plan and its contribution tracking?')) return;
+  const res = await fetch('/api/espp', { method: 'DELETE' });
+  if (!res.ok) return showFormError('esppError', (await res.json().catch(() => ({}))).error || 'Could not remove the plan.');
+  closeModals();
+  await loadPortfolio();
+});
+
+// ---- purchase day
+
+const purchaseModal = document.getElementById('purchaseModal');
+
+function openPurchase() {
+  const e = state.espp;
+  const cash = esppCash();
+  const est = cash ? esppEstimate(cash.now) : null;
+  const q = state.quotes[e.plan.symbol];
+  const v = (id, x) => (document.getElementById(id).value = x == null ? '' : x);
+  v('buyDate', e.period.end);
+  v('buyShares', est ? est.shares : '');
+  v('buyPrice', est ? est.buy.toFixed(4) : '');
+  v('buyFmv', q && q.price ? q.price : '');
+  v('buyLeftover', est ? Math.max(est.leftover, 0).toFixed(2) : '');
+  v('buyCarry', '1');
+  v('buyNextStart', q && q.price ? q.price : '');
+  document.getElementById('buyError').classList.add('hidden');
+  openModal(purchaseModal);
+  updateBuyPreview();
+}
+
+function updateBuyPreview() {
+  const n = (id) => Number(document.getElementById(id).value);
+  const shares = n('buyShares'), price = n('buyPrice'), fmv = n('buyFmv');
+  const el = document.getElementById('buyPreview');
+  if (!(shares > 0) || !(price > 0) || !(fmv > 0)) {
+    el.innerHTML = '<span class="muted">Enter shares and both prices to see the result.</span>';
+    return;
+  }
+  const hold = state.espp.plan.holdMonths;
+  const date = document.getElementById('buyDate').value;
+  el.innerHTML =
+    `<div class="row"><span>Paid</span><b>${money(shares * price)}</b></div>` +
+    `<div class="row"><span>Worth on purchase day</span><b>${money(shares * fmv)}</b></div>` +
+    `<div class="row"><span>Discount gain</span><b class="${signClass(fmv - price)}">${money((fmv - price) * shares, { sign: true })}</b></div>` +
+    (date ? `<div class="row"><span>Sellable from</span><b>${fmtDateY(addMonthsYmd(date, hold))}</b></div>` : '');
+}
+['buyShares', 'buyPrice', 'buyFmv', 'buyDate'].forEach((id) => document.getElementById(id).addEventListener('input', updateBuyPreview));
+
+function addMonthsYmd(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1 + n, 1);
+  dt.setDate(Math.min(d, new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate()));
+  return ymd(dt);
+}
+
+document.getElementById('confirmBuyBtn').addEventListener('click', async () => {
+  const g = (id) => document.getElementById(id).value;
+  const btn = document.getElementById('confirmBuyBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/espp/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: g('buyDate'),
+        shares: Number(g('buyShares')),
+        price: Number(g('buyPrice')),
+        fmv: Number(g('buyFmv')),
+        leftoverUsd: Number(g('buyLeftover')) || 0,
+        carry: g('buyCarry') === '1',
+        nextStartPrice: Number(g('buyNextStart')) || null,
+      }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return showFormError('buyError', j.error || 'Could not book the purchase.');
+    closeModals();
+    await loadPortfolio();
+    showAddNote(`Booked ${trimNum(j.lot.shares)} ${state.espp.plan.symbol} shares. Next purchase ${fmtDateY(j.period.end)}.`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ---- a single lot
+
+const lotModal = document.getElementById('lotModal');
+
+function openLot(lot) {
+  const e = state.espp;
+  const q = state.quotes[e.plan.symbol];
+  document.getElementById('lotId').value = lot.id;
+  document.getElementById('lotTitle').textContent = `${e.plan.symbol} ESPP · ${fmtDateY(lot.date)}`;
+  document.getElementById('lotInfo').innerHTML =
+    `<div class="row"><span>Paid / share</span><b>${money(lot.price)}</b></div>` +
+    `<div class="row"><span>Market price at purchase</span><b>${money(lot.fmv)}</b></div>` +
+    `<div class="row"><span>Discount gain at purchase</span><b class="${signClass(lot.fmv - lot.price)}">${money((lot.fmv - lot.price) * lot.shares, { sign: true })}</b></div>` +
+    `<div class="row"><span>Sellable from</span><b>${fmtDateY(lot.sellableFrom)}</b></div>`;
+  document.getElementById('lotHeld').textContent = '(lot has ' + trimNum(lot.shares) + ')';
+  document.getElementById('lotShares').value = lot.shares;
+  document.getElementById('lotPrice').value = q && q.price ? q.price : '';
+  document.getElementById('lotPriceHint').textContent = q && q.price ? '(live: ' + money(q.price) + ')' : '';
+  const warn = document.getElementById('lotWarn');
+  const early = lot.sellableFrom > ymd(new Date());
+  warn.textContent = early
+    ? `Still inside the holding period until ${fmtDateY(lot.sellableFrom)}. Selling earlier may not be allowed by the trustee, or may be taxed worse.`
+    : '';
+  warn.classList.toggle('hidden', !early);
+  document.getElementById('lotError').classList.add('hidden');
+  openModal(lotModal);
+  updateLotPreview();
+}
+
+function currentLot() {
+  const id = document.getElementById('lotId').value;
+  return state.espp && state.espp.lots.find((l) => l.id === id);
+}
+
+function updateLotPreview() {
+  const el = document.getElementById('lotPreview');
+  const lot = currentLot();
+  const shares = Number(document.getElementById('lotShares').value);
+  const price = Number(document.getElementById('lotPrice').value);
+  if (!lot || !(shares > 0) || !(price >= 0)) {
+    el.innerHTML = '<span class="muted">Enter shares and a price to see the result.</span>';
+    return;
+  }
+  const gain = (price - lot.price) * shares;
+  const left = lot.shares - shares;
+  el.innerHTML =
+    `<div class="row"><span>Proceeds</span><b>${money(shares * price)}</b></div>` +
+    `<div class="row"><span>Realised gain / loss</span><b class="${signClass(gain)}">${money(gain, { sign: true })}</b></div>` +
+    `<div class="row"><span>Shares left in lot</span><b>${left <= 1e-9 ? 'none — lot closed' : trimNum(Math.round(left * 1e6) / 1e6)}</b></div>`;
+}
+document.getElementById('lotShares').addEventListener('input', updateLotPreview);
+document.getElementById('lotPrice').addEventListener('input', updateLotPreview);
+
+document.getElementById('confirmLotSellBtn').addEventListener('click', async () => {
+  const lot = currentLot();
+  if (!lot) return;
+  const shares = Number(document.getElementById('lotShares').value);
+  const price = Number(document.getElementById('lotPrice').value);
+  if (!(shares > 0)) return showFormError('lotError', 'Enter how many shares you sold.');
+  if (!(price >= 0)) return showFormError('lotError', 'Enter the price you sold at.');
+  const res = await fetch('/api/espp/lots/' + encodeURIComponent(lot.id) + '/sell', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ shares, price }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) return showFormError('lotError', j.error || 'Could not record that sale.');
+  closeModals();
+  await loadPortfolio();
+});
+
+document.getElementById('deleteLotBtn').addEventListener('click', async () => {
+  const lot = currentLot();
+  if (!lot || !confirm(`Delete the ${fmtDateY(lot.date)} lot? Use this only to fix a mistake — it leaves no sale on record.`)) return;
+  await fetch('/api/espp/lots/' + encodeURIComponent(lot.id), { method: 'DELETE' });
+  closeModals();
+  await loadPortfolio();
+});
 
 // ------------------------------------------------------------- settings
 
@@ -948,13 +1374,16 @@ const ALLOC_PALETTE = [
 // and total their market value.
 function computeAllocation() {
   const bySym = new Map();
-  for (const h of state.holdings) {
+  for (const h of allHoldings()) {
     const r = computeRow(h);
     if (r.marketValue == null || r.marketValue <= 0) continue;
-    const cur = bySym.get(h.symbol) || { symbol: h.symbol, value: 0 };
+    const key = h.espp ? h.symbol + ' ESPP' : h.symbol;
+    const cur = bySym.get(key) || { symbol: key, value: 0 };
     cur.value += r.marketValue;
-    bySym.set(h.symbol, cur);
+    bySym.set(key, cur);
   }
+  const cash = esppCash();
+  if (cash && cash.now > 0) bySym.set('ESPP cash', { symbol: 'ESPP cash', value: cash.now });
   const arr = [...bySym.values()].sort((a, b) => b.value - a.value);
   const total = arr.reduce((s, x) => s + x.value, 0);
   return { arr, total };

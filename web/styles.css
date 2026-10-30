@@ -465,7 +465,7 @@ main {
 .legend-row.active, .legend-row:hover { background: var(--fill); border-top-color: transparent; border-radius: 10px; }
 .legend-row.active + .legend-row, .legend-row:hover + .legend-row { border-top-color: transparent; }
 .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
-.legend-sym { font-weight: 700; width: 64px; }
+.legend-sym { font-weight: 700; width: 92px; white-space: nowrap; }
 .legend-pct { color: var(--text-dim); width: 56px; text-align: right; }
 .legend-val { margin-left: auto; font-family: var(--font-num); font-weight: 600; }
 
@@ -1062,4 +1062,69 @@ td.left { text-align: left; }
 @media (prefers-contrast: more) {
   :root { --hairline: rgba(128, 128, 128, 0.7); --text-dim: color-mix(in srgb, var(--text) 80%, transparent); }
   .panel { background: var(--card-solid); }
+}
+
+/* ------------------------------------------------------------- espp */
+.espp-panel .panel-head { align-items: flex-start; }
+.espp-period { margin-top: 4px; font-size: 13px; color: var(--text-dim); }
+.espp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.espp-stat {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--hairline);
+  background: var(--well);
+}
+.espp-stat-label { font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.espp-stat-value {
+  margin-top: 2px;
+  font-family: var(--font-num);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.espp-stat-sub { margin-top: 2px; font-size: 12px; color: var(--text-dim); }
+.espp-estimate { margin-top: 12px; }
+.espp-est-head {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+.espp-sep { height: 0.5px; margin: 10px 0; background: var(--separator); }
+.espp-confirm { width: 100%; margin-top: 12px; }
+.espp-warn {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+}
+.espp-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  vertical-align: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--purple);
+  background: color-mix(in srgb, var(--purple) 18%, transparent);
+}
+.row-menu svg { transition: transform 0.3s var(--ease); }
+.row-menu.open svg { transform: rotate(90deg); }
+#holdingsBody tr.lot-row { background: var(--well); }
+#holdingsBody tr.lot-row .sym-cell { padding-left: 14px; border-left: 2px solid color-mix(in srgb, var(--purple) 60%, transparent); }
+#holdingsBody tr.lot-row .ticker { font-size: 14px; font-weight: 600; }
+
+@media (max-width: 620px) {
+  .espp-stats { gap: 6px; }
+  .espp-stat { padding: 10px; }
+  .espp-stat-value { font-size: 16px; }
 }
